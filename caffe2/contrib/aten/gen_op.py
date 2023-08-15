@@ -33,8 +33,7 @@ args, _ = parser.parse_known_args()
 
 if args.aten_root:
     if not os.path.exists(args.aten_root):
-        raise ValueError('aten_root ({}) does not exist'.format(
-            args.aten_root))
+        raise ValueError(f'aten_root ({args.aten_root}) does not exist')
     sys.path.append(os.path.join(args.aten_root, 'src', 'ATen'))
     from code_template import CodeTemplate as CT
 else:
@@ -111,7 +110,7 @@ def supports(o, factory_methods):
     # Ignore all families (!) of functions that have TensorOptions (i.e. tensor factory methods).
     if o['name'] in factory_methods:
         if factory_methods[o['name']] == 0:
-            print("Skipping {} because it is a factory method".format(o['name']))
+            print(f"Skipping {o['name']} because it is a factory method")
         factory_methods[o['name']] += 1
         return False
 
@@ -128,15 +127,17 @@ def supports(o, factory_methods):
     # skip return types we cannot handle
     for ret in o['returns']:
         if not value_has_tensors(ret) and ret['type'] not in RETURN_MAP:
-            print("Skipping {} Because of Ret: {} ({})".format(
-                  o['name'], ret['type'], ret['dynamic_type']))
+            print(
+                f"Skipping {o['name']} Because of Ret: {ret['type']} ({ret['dynamic_type']})"
+            )
             return False
 
     # skip arguments we cannot handle
     for arg in o['arguments']:
         if not value_has_tensors(arg) and arg['type'] not in ARGUMENT_MAP:
-            print("Skipping {} Because of Arg: {} ({}) ".format(
-                  o['name'], arg['type'], arg['dynamic_type']))
+            print(
+                f"Skipping {o['name']} Because of Arg: {arg['type']} ({arg['dynamic_type']}) "
+            )
             return False
     return True
 
@@ -161,10 +162,7 @@ case ${key}: { // ${name}
 
 
 def get_output(o, i):
-    if len(o['returns']) == 1:
-        return 'the_result'
-    else:
-        return 'std::get<{}>(the_result)'.format(i)
+    return 'the_result' if len(o['returns']) == 1 else f'std::get<{i}>(the_result)'
 
 
 def attribute_names(o):
@@ -191,11 +189,13 @@ def get_num_inputs(o):
 
 
 def find_factory_methods(decls):
-    factory_methods = {}
-    for o in decls:
-        if any(arg['dynamic_type'] == 'TensorOptions' for arg in o['arguments']):
-            factory_methods[o['name']] = 0
-    return factory_methods
+    return {
+        o['name']: 0
+        for o in decls
+        if any(
+            arg['dynamic_type'] == 'TensorOptions' for arg in o['arguments']
+        )
+    }
 
 
 if __name__ == '__main__':
@@ -261,20 +261,19 @@ if __name__ == '__main__':
                 # NOTE: do not advance real_inputs here. After this we will
                 # switch to indexing the "stack" from the end as if we only had
                 env['statements'].append(
-                    'auto {} = peekSlice({}, InputSize() - {}, InputSize());'
-                        .format(arg['name'], real_inputs, static_tensor_inputs))
+                    f"auto {arg['name']} = peekSlice({real_inputs}, InputSize() - {static_tensor_inputs}, InputSize());"
+                )
             elif value_is_tensor_type(arg):
                 # load tensor inputs from Caffe2
 
                 env['statements'].append(
-                    'auto {} = peek({}, {});'.format(arg['name'], real_inputs, view_length))
+                    f"auto {arg['name']} = peek({real_inputs}, {view_length});"
+                )
                 real_inputs += 1
                 if arg['dynamic_type'] == 'Tensor' and not defined_inferred_type:
                     # first tensor input is used to define the output type.
                     defined_inferred_type = True
-                    env['statements'].append(
-                        'auto inferred_type = &at::getType({});'.format(
-                            arg['name']))
+                    env['statements'].append(f"auto inferred_type = &at::getType({arg['name']});")
             else:
                 init = CT(ARGUMENT_MAP[arg['type']]).substitute(env, arg=arg['name'])
                 env['initialization'].append(init)
@@ -287,8 +286,7 @@ if __name__ == '__main__':
         if 'namespace' in o['method_of']:
             env['invocation'] = CT("at::${name}(${arguments})").substitute(env)
         elif 'Tensor' in o['method_of']:
-            env['invocation'] = "self.{}({})".format(
-                o['name'], ', '.join(env['arguments'][1:]))
+            env['invocation'] = f"self.{o['name']}({', '.join(env['arguments'][1:])})"
         else:
             assert('Type' in o['method_of'])
             env['invocation'] = CT(
@@ -296,4 +294,7 @@ if __name__ == '__main__':
 
         top_env['implementations'].append(OPTION_TEMPLATE.substitute(env))
         key += 1
-    write(os.path.join(args.install_dir, args.output_prefix + "aten_op.h"), OP_TEMPLATE.substitute(top_env))
+    write(
+        os.path.join(args.install_dir, f"{args.output_prefix}aten_op.h"),
+        OP_TEMPLATE.substitute(top_env),
+    )

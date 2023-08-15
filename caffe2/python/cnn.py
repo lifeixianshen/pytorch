@@ -48,10 +48,8 @@ class CNNModelHelper(ModelHelper):
         self.use_cudnn = use_cudnn
         self.cudnn_exhaustive_search = cudnn_exhaustive_search
         self.ws_nbytes_limit = ws_nbytes_limit
-        if self.order != "NHWC" and self.order != "NCHW":
-            raise ValueError(
-                "Cannot understand the CNN storage order %s." % self.order
-            )
+        if self.order not in ["NHWC", "NCHW"]:
+            raise ValueError(f"Cannot understand the CNN storage order {self.order}.")
 
     def ImageInput(self, blob_in, blob_out, use_gpu_transform=False, **kwargs):
         return brew.image_input(

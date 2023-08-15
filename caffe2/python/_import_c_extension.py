@@ -17,7 +17,7 @@ with extension_loader.DlopenGuard():
         if num_cuda_devices():  # noqa
             has_gpu_support = True
     except ImportError as gpu_e:
-        logging.info('Failed to import cuda module: {}'.format(gpu_e))
+        logging.info(f'Failed to import cuda module: {gpu_e}')
         try:
             RTLD_LAZY = 1
             with extension_loader.DlopenGuard(RTLD_LAZY):
@@ -26,7 +26,7 @@ with extension_loader.DlopenGuard():
                 has_hip_support = True
                 logging.info('This caffe2 python run has AMD GPU support!')
         except ImportError as hip_e:
-            logging.info('Failed to import AMD hip module: {}'.format(hip_e))
+            logging.info(f'Failed to import AMD hip module: {hip_e}')
 
             logging.warning(
                 'This caffe2 python run does not have GPU support. '

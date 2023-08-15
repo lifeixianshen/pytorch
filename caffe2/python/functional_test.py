@@ -28,21 +28,20 @@ def _tensor_splits(draw, add_axis=False):
                 for i in range(tensor.shape[axis])
             ]
         )
-    else:
-        # General case: pick some (possibly consecutive, even non-unique)
-        # indices at which we will split the tensor, along the given axis.
-        splits = sorted(
-            draw(
-                st.
-                lists(elements=st.integers(0, tensor.shape[axis]), max_size=4)
-            ) + [0, tensor.shape[axis]]
-        )
-        return (
-            axis, np.array(np.diff(splits), dtype=np.int32), [
-                tensor.take(range(splits[i], splits[i + 1]), axis=axis)
-                for i in range(len(splits) - 1)
-            ],
-        )
+    # General case: pick some (possibly consecutive, even non-unique)
+    # indices at which we will split the tensor, along the given axis.
+    splits = sorted(
+        draw(
+            st.
+            lists(elements=st.integers(0, tensor.shape[axis]), max_size=4)
+        ) + [0, tensor.shape[axis]]
+    )
+    return (
+        axis, np.array(np.diff(splits), dtype=np.int32), [
+            tensor.take(range(splits[i], splits[i + 1]), axis=axis)
+            for i in range(len(splits) - 1)
+        ],
+    )
 
 
 class TestFunctional(hu.HypothesisTestCase):

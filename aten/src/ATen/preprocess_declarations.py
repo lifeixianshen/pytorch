@@ -54,7 +54,8 @@ def process_types_and_backends(option):
             return [(p, tt) for tt in type_map[t]]
         assert(t in all_types)
         return [(p, t)]
-    pairs = set(p for pair in pairs for p in expand(pair))
+
+    pairs = {p for pair in pairs for p in expand(pair)}
 
     # disable CUDA Half if there is a Sparse argument
     for arg in option.get('arguments', []):
@@ -66,7 +67,7 @@ def process_types_and_backends(option):
         pairs.discard(('CPU', 'Half'))
 
     # sort the result for easy reading
-    option['backend_type_pairs'] = sorted([p for p in pairs])
+    option['backend_type_pairs'] = sorted(list(pairs))
 
 
 def exclude(declaration):
@@ -126,7 +127,7 @@ def sanitize_return(option):
     ret = option['return']
     m = re.match(r'argument (\d+(,\d+)*)', ret)
     if m is not None:
-        arguments = [int(x) for x in m.group(1).split(',')]
+        arguments = [int(x) for x in m[1].split(',')]
         option['return'] = {'kind': 'arguments', 'arguments': arguments}
     elif ret == 'self':
         option['return'] = {'kind': 'arguments', 'arguments': []}
@@ -196,7 +197,7 @@ def discover_sparse_tensor_operations(declaration):
     dense_sparse_options = [option
                             for option in declaration['options']
                             if option.get('aten_dense_sparse', False)]
-    if len(dense_sparse_options) > 0:
+    if dense_sparse_options:
         signature_to_option = {signature(option): option
                                for option in declaration['options']}
 
@@ -218,10 +219,7 @@ def discover_sparse_tensor_operations(declaration):
 
 
 def is_extended_method(option):
-    if 'method' in option['variants']:
-        return False
-    else:
-        return True
+    return 'method' not in option['variants']
 
 
 def run(declarations):

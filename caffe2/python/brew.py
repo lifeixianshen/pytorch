@@ -83,14 +83,14 @@ class HelperWrapper(object):
         def scope_wrapper(*args, **kwargs):
             new_kwargs = {}
             if helper_name != 'arg_scope':
-                if len(args) > 0 and isinstance(args[0], ModelHelper):
+                if args and isinstance(args[0], ModelHelper):
                     model = args[0]
                 elif 'model' in kwargs:
                     model = kwargs['model']
                 else:
-                    raise RuntimeError(
-                "The first input of helper function should be model. " \
-                "Or you can provide it in kwargs as model=<your_model>.")
+                        raise RuntimeError(
+                    "The first input of helper function should be model. " \
+                        "Or you can provide it in kwargs as model=<your_model>.")
                 new_kwargs = copy.deepcopy(model.arg_scope)
             func = self._registry[helper_name]
             var_names, _, varkw, _= inspect.getargspec(func)
@@ -113,8 +113,7 @@ class HelperWrapper(object):
         name = helper.__name__
         if name in self._registry:
             raise AttributeError(
-                "Helper {} already exists. Please change your "
-                "helper name.".format(name)
+                f"Helper {name} already exists. Please change your helper name."
             )
         self._registry[name] = helper
 

@@ -23,7 +23,7 @@ TERM_BOLD_END = "\033[0m"
 
 class Option:
     def __init__(self, letter, name, desc, parser, set_once, default, excuses, requires, save):
-        assert not name is None
+        assert name is not None
         self.letter = letter
         self.name = name
         self.desc = desc
@@ -33,7 +33,7 @@ class Option:
         self.excuses = excuses
         self.requires = requires
         self.save = save
-        
+
         self.value = None
         self.value_given = False
         self.prefixed_letter = min(2, len(letter)) * '-' + letter
@@ -47,7 +47,7 @@ class Option:
             raise OptionException("Unable to parse option %s (%s): %s" % (self.prefixed_letter, self.desc, e))
         
     def set_default(self):
-        if not self.default is None:
+        if self.default is not None:
             self.value = self.default
     
     def eval_expr_default(self, env):
@@ -60,8 +60,7 @@ class Option:
             raise OptionException("Unable to set default value for option %s (%s): %s" % (self.prefixed_letter, self.desc, e))
             
     def get_str_value(self, get_default_str=False):
-        val = self.value
-        if get_default_str: val = self.default
+        val = self.default if get_default_str else self.value
         if val is None: return ""
         if isinstance(val, OptionExpression):
             return val.expr
@@ -124,26 +123,43 @@ class OptionsParser:
         """Parses the options in sys.argv based on the options added to this parser. The
         default behavior is to leave any expression default options as OptionExpression objects.
         Set eval_expr_defaults=True to circumvent this."""
-        short_opt_str = ''.join(["%s:" % self.options[name].letter for name in self.options if len(self.options[name].letter) == 1])
-        long_opts = ["%s=" % self.options[name].letter for name in self.options if len(self.options[name].letter) > 1]
+        short_opt_str = ''.join(
+            [
+                f"{self.options[name].letter}:"
+                for name in self.options
+                if len(self.options[name].letter) == 1
+            ]
+        )
+        long_opts = [
+            f"{self.options[name].letter}="
+            for name in self.options
+            if len(self.options[name].letter) > 1
+        ]
         (go, ga) = getopt(sys.argv[1:], short_opt_str, longopts=long_opts)
         dic = dict(go)
-        
+
         for o in self.get_options_list(sort_order=self.SORT_EXPR_LAST):
             if o.prefixed_letter in dic:  
                 o.set_value(dic[o.prefixed_letter])
             else:
                 # check if excused or has default
-                excused = max([o2.prefixed_letter in dic for o2 in self.options.values() if o2.excuses == self.EXCUSE_ALL or o.name in o2.excuses])
+                excused = max(
+                    o2.prefixed_letter in dic
+                    for o2 in self.options.values()
+                    if o2.excuses == self.EXCUSE_ALL or o.name in o2.excuses
+                )
                 if not excused and o.default is None:
-                    raise OptionMissingException("Option %s (%s) not supplied" % (o.prefixed_letter, o.desc))
+                    raise OptionMissingException(
+                        f"Option {o.prefixed_letter} ({o.desc}) not supplied"
+                    )
                 o.set_default()
             # check requirements
             if o.prefixed_letter in dic:
                 for o2 in self.get_options_list(sort_order=self.SORT_LETTER):
                     if o2.name in o.requires and o2.prefixed_letter not in dic:
-                        raise OptionMissingException("Option %s (%s) requires option %s (%s)" % (o.prefixed_letter, o.desc,
-                                                                                                 o2.prefixed_letter, o2.desc))
+                        raise OptionMissingException(
+                            f"Option {o.prefixed_letter} ({o.desc}) requires option {o2.prefixed_letter} ({o2.desc})"
+                        )
         if eval_expr_defaults:
             self.eval_expr_defaults()
         return self.options
@@ -154,7 +170,9 @@ class OptionsParser:
         for name, o in self.options.iteritems():
             if name in op2.options and ((op2.options[name].value_given and op2.options[name].value != self.options[name].value) or not op2.options[name].save):
                 if op2.options[name].set_once:
-                    raise OptionException("Option %s (%s) cannot be changed" % (op2.options[name].prefixed_letter, op2.options[name].desc))
+                    raise OptionException(
+                        f"Option {op2.options[name].prefixed_letter} ({op2.options[name].desc}) cannot be changed"
+                    )
                 self.options[name] = op2.options[name]
         for name in op2.options:
             if name not in self.options:
@@ -166,7 +184,9 @@ class OptionsParser:
             o.eval_expr_default(env)
             
     def all_values_given(self):
-        return max([o.value_given for o in self.options.values() if o.default is not None])
+        return max(
+            o.value_given for o in self.options.values() if o.default is not None
+        )
     
     def get_options_list(self, sort_order=SORT_LETTER):
         """ Returns the list of Option objects in this OptionParser,
@@ -273,7 +293,7 @@ class BooleanOptionParser(OptionParser):
     def parse(value):
         try:
             v = int(value)
-            if not v in (0,1):
+            if v not in {0, 1}:
                 raise OptionException
             return v
         except:
@@ -321,8 +341,7 @@ class RangeOptionParser(OptionParser):
     def parse(value):
         m = re.match("^(\d+)\-(\d+)$", value)
         try:
-            if m: return range(int(m.group(1)), int(m.group(2)) + 1)
-            return [int(value)]
+            return range(int(m[1]), int(m[2]) + 1) if m else [int(value)]
         except:
             raise OptionException("argument is neither an integer nor a range")
     
@@ -365,13 +384,13 @@ class ListOptionParser(OptionParser):
         values = value.split(self.sepchar)
         if type(self.parsers) == list and len(values) != len(self.parsers):
             raise OptionException("requires %d arguments, given %d" % (len(self.parsers), len(values)))
-        
+
         try:
             if type(self.parsers) == list:
                 return [p.parse(v) for p, v in zip(self.parsers, values)]
             return [self.parsers.parse(v) for v in values]
         except:
-            raise OptionException("argument is not of the form %s" % self.get_type_str())
+            raise OptionException(f"argument is not of the form {self.get_type_str()}")
     
     def to_string(self, value):
         if type(self.parsers) == list:
@@ -381,7 +400,7 @@ class ListOptionParser(OptionParser):
     def get_type_str(self):
         if type(self.parsers) == list:
             return self.sepchar.join([p.get_type_str() for p in self.parsers])
-        return "%s%s..." % (self.parsers.get_type_str(), self.sepchar)
+        return f"{self.parsers.get_type_str()}{self.sepchar}..."
     
     @staticmethod
     def is_type(value):

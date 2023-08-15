@@ -76,10 +76,10 @@ class CRFWithLoss(object):
         all_paths_scores = self._crf_forward(
             input_data, initial_state, transitions_copy
         )
-        loss = self.model.net.Sub(
-            [all_paths_scores, path_total_score], core.ScopedBlobReference("crf_loss")
+        return self.model.net.Sub(
+            [all_paths_scores, path_total_score],
+            core.ScopedBlobReference("crf_loss"),
         )
-        return loss
 
     def _path_binary_scores(self, labels, transitions, seq_lengths=None):
         column_ids, _ = self.model.net.RemovePadding(
@@ -111,8 +111,7 @@ class CRFWithLoss(object):
         flattend_query = self.model.net.FlattenToVec(query_one_hot)
         flattend_data = self.model.net.FlattenToVec(in_data)
         query_scores = self.model.net.DotProduct([flattend_query, flattend_data])
-        final_sum = self.model.net.ReduceFrontSum([query_scores])
-        return final_sum
+        return self.model.net.ReduceFrontSum([query_scores])
 
     def _crf_forward(
         self, input_blob, initial_state, transitions_copy, seq_lengths=None
@@ -153,7 +152,7 @@ class CRFWithLoss(object):
             ""
             # We have to manually scope due to our internal/external blob
             # relationships.
-            return "{}/{}".format(str(scope), str(name))
+            return "{}/{}".format(scope, str(name))
 
         step_model = model_helper.ModelHelper(name="crf_step", param_model=self.model)
         input_t, cell_t_prev, _ = step_model.net.AddExternalInputs(

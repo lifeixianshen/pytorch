@@ -142,13 +142,13 @@ from tools.setup_helpers.env import check_env_flag, check_negative_env_flag
 
 
 def hotpatch_var(var, prefix='USE_'):
-    if check_env_flag('NO_' + var):
+    if check_env_flag(f'NO_{var}'):
         os.environ[prefix + var] = '0'
-    elif check_negative_env_flag('NO_' + var):
+    elif check_negative_env_flag(f'NO_{var}'):
         os.environ[prefix + var] = '1'
-    elif check_env_flag('WITH_' + var):
+    elif check_env_flag(f'WITH_{var}'):
         os.environ[prefix + var] = '1'
-    elif check_negative_env_flag('WITH_' + var):
+    elif check_negative_env_flag(f'WITH_{var}'):
         os.environ[prefix + var] = '0'
 
 # Before we run the setup_helpers, let's look for NO_* and WITH_*
@@ -216,16 +216,14 @@ except ImportError:
 cwd = os.path.dirname(os.path.abspath(__file__))
 lib_path = os.path.join(cwd, "torch", "lib")
 third_party_path = os.path.join(cwd, "third_party")
-tmp_install_path = lib_path + "/tmp_install"
+tmp_install_path = f"{lib_path}/tmp_install"
 caffe2_build_dir = os.path.join(cwd, "build")
 # lib/pythonx.x/site-packages
 rel_site_packages = distutils.sysconfig.get_python_lib(prefix='')
 # full absolute path to the dir above
 full_site_packages = distutils.sysconfig.get_python_lib()
 # CMAKE: full path to python library
-cmake_python_library = "{}/{}".format(
-    distutils.sysconfig.get_config_var("LIBDIR"),
-    distutils.sysconfig.get_config_var("INSTSONAME"))
+cmake_python_library = f'{distutils.sysconfig.get_config_var("LIBDIR")}/{distutils.sysconfig.get_config_var("INSTSONAME")}'
 cmake_python_include_dir = distutils.sysconfig.get_python_inc()
 
 
@@ -298,28 +296,28 @@ if os.getenv('PYTORCH_BUILD_VERSION'):
     build_number = int(os.getenv('PYTORCH_BUILD_NUMBER'))
     version = os.getenv('PYTORCH_BUILD_VERSION')
     if build_number > 1:
-        version += '.post' + str(build_number)
+        version += f'.post{build_number}'
 else:
     try:
         sha = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=cwd).decode('ascii').strip()
-        version += '+' + sha[:7]
+        version += f'+{sha[:7]}'
     except Exception:
         pass
-print("Building wheel {}-{}".format(package_name, version))
+print(f"Building wheel {package_name}-{version}")
 
 
 class create_version_file(PytorchCommand):
     def run(self):
         global version, cwd
-        print('-- Building version ' + version)
+        print(f'-- Building version {version}')
         version_path = os.path.join(cwd, 'torch', 'version.py')
         with open(version_path, 'w') as f:
-            f.write("__version__ = '{}'\n".format(version))
+            f.write(f"__version__ = '{version}'\n")
             # NB: This is not 100% accurate, because you could have built the
             # library code with DEBUG, but csrc without DEBUG (in which case
             # this would claim to be a release build when it's not.)
-            f.write("debug = {}\n".format(repr(DEBUG)))
-            f.write("cuda = {}\n".format(repr(CUDA_VERSION)))
+            f.write(f"debug = {repr(DEBUG)}\n")
+            f.write(f"cuda = {repr(CUDA_VERSION)}\n")
 
 
 ################################################################################
@@ -345,7 +343,7 @@ def check_pydep(importname, module):
 # Calls build_pytorch_libs.sh/bat with the correct env variables
 def build_libs(libs):
     for lib in libs:
-        assert lib in dep_libs, 'invalid lib: {}'.format(lib)
+        assert lib in dep_libs, f'invalid lib: {lib}'
     if IS_WINDOWS:
         build_libs_cmd = ['tools\\build_pytorch_libs.bat']
     else:
@@ -415,7 +413,7 @@ def build_libs(libs):
     kwargs = {'cwd': 'build'} if not IS_WINDOWS else {}
 
     if subprocess.call(build_libs_cmd + libs, env=my_env, **kwargs) != 0:
-        print("Failed to run '{}'".format(' '.join(build_libs_cmd + libs)))
+        print(f"Failed to run '{' '.join(build_libs_cmd + libs)}'")
         sys.exit(1)
 
 
@@ -562,13 +560,13 @@ def monkey_patch_C10D_inc_flags():
     C10D's include deps are not determined until after build c10d is run, so
     we need to monkey-patch it.
     '''
-    mpi_include_path_file = tmp_install_path + "/include/c10d/mpi_include_path"
+    mpi_include_path_file = f"{tmp_install_path}/include/c10d/mpi_include_path"
     if os.path.exists(mpi_include_path_file):
         with open(mpi_include_path_file, 'r') as f:
             mpi_include_paths = f.readlines()
         mpi_include_paths = [p.strip() for p in mpi_include_paths]
         C.include_dirs += mpi_include_paths
-        print("-- For c10d, will include MPI paths: {}".format(mpi_include_paths))
+        print(f"-- For c10d, will include MPI paths: {mpi_include_paths}")
 
 
 build_ext_parent = ninja_build_ext if USE_NINJA \
@@ -584,15 +582,15 @@ class build_ext(build_ext_parent):
         else:
             print('-- NumPy not found')
         if USE_CUDNN:
-            print('-- Detected cuDNN at ' + CUDNN_LIBRARY + ', ' + CUDNN_INCLUDE_DIR)
+            print(f'-- Detected cuDNN at {CUDNN_LIBRARY}, {CUDNN_INCLUDE_DIR}')
         else:
             print('-- Not using cuDNN')
         if USE_MIOPEN:
-            print('-- Detected MIOpen at ' + MIOPEN_LIBRARY + ', ' + MIOPEN_INCLUDE_DIR)
+            print(f'-- Detected MIOpen at {MIOPEN_LIBRARY}, {MIOPEN_INCLUDE_DIR}')
         else:
             print('-- Not using MIOpen')
         if USE_CUDA:
-            print('-- Detected CUDA at ' + CUDA_HOME)
+            print(f'-- Detected CUDA at {CUDA_HOME}')
         else:
             print('-- Not using CUDA')
         if USE_MKLDNN:
@@ -664,15 +662,15 @@ class build_ext(build_ext_parent):
                 continue
             fullname = self.get_ext_fullname(ext.name)
             filename = self.get_ext_filename(fullname)
-            print("\nCopying extension {}".format(ext.name))
+            print(f"\nCopying extension {ext.name}")
 
             src = os.path.join(tmp_install_path, rel_site_packages, filename)
             if not os.path.exists(src):
-                print("{} does not exist".format(src))
+                print(f"{src} does not exist")
                 del self.extensions[i]
             else:
                 dst = os.path.join(os.path.realpath(self.build_lib), filename)
-                print("Copying {} from {} to {}".format(ext.name, src, dst))
+                print(f"Copying {ext.name} from {src} to {dst}")
                 dst_dir = os.path.dirname(dst)
                 if not os.path.exists(dst_dir):
                     os.makedirs(dst_dir)
@@ -683,7 +681,7 @@ class build_ext(build_ext_parent):
     def get_outputs(self):
         outputs = distutils.command.build_ext.build_ext.get_outputs(self)
         outputs.append(os.path.join(self.build_lib, "caffe2"))
-        print("setup.py::get_outputs returning {}".format(outputs))
+        print(f"setup.py::get_outputs returning {outputs}")
         return outputs
 
 
@@ -730,12 +728,10 @@ class clean(distutils.command.clean.clean):
             ignores = f.read()
             pat = re.compile(r'^#( BEGIN NOT-CLEAN-FILES )?')
             for wildcard in filter(None, ignores.split('\n')):
-                match = pat.match(wildcard)
-                if match:
+                if match := pat.match(wildcard):
                     if match.group(1):
                         # Marker is found and stop reading .gitignore.
                         break
-                    # Ignore lines which begin with '#'.
                 else:
                     for filename in glob.glob(wildcard):
                         try:

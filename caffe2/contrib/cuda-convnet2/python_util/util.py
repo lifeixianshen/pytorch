@@ -33,29 +33,26 @@ def pickle(filename, data):
     
 def unpickle(filename):
     if not os.path.exists(filename):
-        raise UnpickleError("Path '%s' does not exist." % filename)
+        raise UnpickleError(f"Path '{filename}' does not exist.")
 
-    fo = open(filename, 'r')
-    z = StringIO()
-    file_size = os.fstat(fo.fileno()).st_size
-    # Read 1GB at a time to avoid overflow
-    while fo.tell() < file_size:
-        z.write(fo.read(1 << 30))
-    fo.close()
+    with open(filename, 'r') as fo:
+        z = StringIO()
+        file_size = os.fstat(fo.fileno()).st_size
+        # Read 1GB at a time to avoid overflow
+        while fo.tell() < file_size:
+            z.write(fo.read(1 << 30))
     dict = cPickle.loads(z.getvalue())
     z.close()
-    
+
     return dict
 
 def is_intel_machine():
     VENDOR_ID_REGEX = re.compile('^vendor_id\s+: (\S+)')
-    f = open('/proc/cpuinfo')
-    for line in f:
-        m = VENDOR_ID_REGEX.match(line)
-        if m:
-            f.close()
-            return m.group(1) == 'GenuineIntel'
-    f.close()
+    with open('/proc/cpuinfo') as f:
+        for line in f:
+            if m := VENDOR_ID_REGEX.match(line):
+                f.close()
+                return m[1] == 'GenuineIntel'
     return False
 
 # Returns the CPUs associated with a given GPU
@@ -68,18 +65,20 @@ def get_cpus_for_gpu(gpu):
         for line in f:
             if line.startswith('Bus Location'):
                 bus_id = line.split(':', 1)[1].strip()
-                bus_id = bus_id[:7] + ':' + bus_id[8:]
-                ff = open('/sys/module/nvidia/drivers/pci:nvidia/%s/local_cpulist' % bus_id)
-                cpus_str = ff.readline()
-                ff.close()
-                cpus = [cpu for s in cpus_str.split(',') for cpu in range(int(s.split('-')[0]),int(s.split('-')[1])+1)]
-                return cpus
+                bus_id = f'{bus_id[:7]}:{bus_id[8:]}'
+                with open(f'/sys/module/nvidia/drivers/pci:nvidia/{bus_id}/local_cpulist') as ff:
+                    cpus_str = ff.readline()
+                return [
+                    cpu
+                    for s in cpus_str.split(',')
+                    for cpu in range(
+                        int(s.split('-')[0]), int(s.split('-')[1]) + 1
+                    )
+                ]
     return [-1]
 
 def get_cpu():
-    if is_intel_machine():
-        return 'intel'
-    return 'amd'
+    return 'intel' if is_intel_machine() else 'amd'
 
 def is_windows_machine():
     return os.name == 'nt'

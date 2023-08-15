@@ -28,23 +28,22 @@ def _StateMeetsRule(state, rule):
         return False
     curr_stages = set(list(state.stage))
     # all stages in rule.stages should be in, otherwise it's not a match.
-    if len(rule.stage) and any([s not in curr_stages for s in rule.stage]):
+    if len(rule.stage) and any(s not in curr_stages for s in rule.stage):
         return False
     # none of the stage in rule.stages should be in, otherwise it's not a match.
-    if len(rule.not_stage) and any([s in curr_stages for s in rule.not_stage]):
-        return False
-    # If none of the nonmatch happens, return True.
-    return True
+    return not len(rule.not_stage) or all(
+        s not in curr_stages for s in rule.not_stage
+    )
 
 
 def _ShouldInclude(net_state, layer):
     """A function that reproduces Caffe's inclusion and exclusion rule."""
     ret = (len(layer.include) == 0)
     # check exclude rules: if any exclusion is met, we shouldn't include.
-    ret &= not any([_StateMeetsRule(net_state, rule) for rule in layer.exclude])
+    ret &= not any(_StateMeetsRule(net_state, rule) for rule in layer.exclude)
     if len(layer.include):
         # check include rules: if any inclusion is met, we should include.
-        ret |= any([_StateMeetsRule(net_state, rule) for rule in layer.include])
+        ret |= any(_StateMeetsRule(net_state, rule) for rule in layer.include)
     return ret
 
 
@@ -84,7 +83,6 @@ def _AdjustDims(op_def, arg_map, pads, dim1, dim2):
     n2, c2, h2, w2 = dim2
     assert(n1 == n2)
     assert(c1 == c2)
-    is_pad = 'pad' in arg_map
     if h1 != h2 or w1 != w2:
         if h1 == h2 + 1:
             pads['pad_b'] += 1
@@ -94,6 +92,7 @@ def _AdjustDims(op_def, arg_map, pads, dim1, dim2):
             pads['pad_r'] += 1
         elif w1 != w2:
             raise Exception("Unexpected dimensions for width:", w1, w2)
+        is_pad = 'pad' in arg_map
         if is_pad:
             op_def.arg.remove(arg_map['pad'])
             args = []
@@ -136,9 +135,7 @@ def _RemoveLegacyPad(net, net_params, input_dims):
         for i in range(len(net.op)):
             op_def = net.op[i]
             if i in legacy_pad_ops:
-                arg_map = {}
-                for arg in op_def.arg:
-                    arg_map[arg.name] = arg
+                arg_map = {arg.name: arg for arg in op_def.arg}
                 pads = _GetLegacyPadArgs(op_def, arg_map)
                 # remove legacy pad arg
                 for j in range(len(op_def.arg)):
@@ -148,7 +145,7 @@ def _RemoveLegacyPad(net, net_params, input_dims):
                         break
                 output = op_def.output[0]
                 # use a new name to avoid the interference with inplace
-                nonlegacy_output = output + '_nonlegacy'
+                nonlegacy_output = f'{output}_nonlegacy'
                 op_def.output[0] = nonlegacy_output
                 ws._run_operator(op_def.SerializeToString())
                 blob_nonlegacy = ws.fetch_blob(nonlegacy_output)
@@ -212,8 +209,7 @@ class TranslatorRegistry(object):
             caffe_ops, params = cls.registry_[layer.type](
                 layer, pretrained_blobs, is_test, **kwargs)
         except KeyError:
-            raise KeyError('No translator registered for layer: %s yet.' %
-                           str(layer))
+            raise KeyError(f'No translator registered for layer: {str(layer)} yet.')
         if caffe_ops is None:
             caffe_ops = []
         if type(caffe_ops) is not list:
@@ -244,10 +240,9 @@ class TranslatorRegistry(object):
             input_dims = _GetInputDims(caffe_net)
         for layer in caffe_net.layer:
             if not _ShouldInclude(net_state, layer):
-                log.info('Current net state does not need layer {}'
-                            .format(layer.name))
+                log.info(f'Current net state does not need layer {layer.name}')
                 continue
-            log.info('Translate layer {}'.format(layer.name))
+            log.info(f'Translate layer {layer.name}')
             # Get pretrained one
             pretrained_layers = (
                 [l for l in pretrained_net.layer
@@ -275,7 +270,7 @@ class TranslatorRegistry(object):
             net_params.protos.extend(params)
         if remove_legacy_pad:
             assert input_dims, \
-                   'Please specify input_dims to remove legacy_pad'
+                       'Please specify input_dims to remove legacy_pad'
             net = _RemoveLegacyPad(net, net_params, input_dims)
         return net, net_params
 
@@ -390,7 +385,7 @@ def TranslateConvNd(layer, pretrained_blobs, is_test, **kwargs):
     param = layer.convolution3d_param
     caffe_op = BaseTranslate(layer, "Conv")
     output = caffe_op.output[0]
-    caffe_op.input.append(output + '_w')
+    caffe_op.input.append(f'{output}_w')
 
     AddArgument(
         caffe_op,
@@ -400,23 +395,20 @@ def TranslateConvNd(layer, pretrained_blobs, is_test, **kwargs):
         caffe_op,
         "strides",
         [param.temporal_stride, param.stride, param.stride])
-    temporal_pad = 0
-    spatial_pad = 0
-    if hasattr(param, 'temporal_pad'):
-        temporal_pad = param.temporal_pad
-    if hasattr(param, 'pad'):
-        spatial_pad = param.pad
+    temporal_pad = param.temporal_pad if hasattr(param, 'temporal_pad') else 0
+    spatial_pad = param.pad if hasattr(param, 'pad') else 0
     AddArgument(caffe_op, "pads", [temporal_pad, spatial_pad, spatial_pad] * 2)
 
     # weight
-    params = [
-        utils.NumpyArrayToCaffe2Tensor(pretrained_blobs[0], output + '_w')]
+    params = [utils.NumpyArrayToCaffe2Tensor(pretrained_blobs[0], f'{output}_w')]
     # bias
     if len(pretrained_blobs) == 2:
-        caffe_op.input.append(output + '_b')
+        caffe_op.input.append(f'{output}_b')
         params.append(
             utils.NumpyArrayToCaffe2Tensor(
-                pretrained_blobs[1].flatten(), output + '_b'))
+                pretrained_blobs[1].flatten(), f'{output}_b'
+            )
+        )
     return caffe_op, params
 
 
@@ -425,17 +417,18 @@ def TranslateConv(layer, pretrained_blobs, is_test, **kwargs):
     param = layer.convolution_param
     caffe_op = BaseTranslate(layer, "Conv")
     output = caffe_op.output[0]
-    caffe_op.input.append(output + '_w')
+    caffe_op.input.append(f'{output}_w')
     _TranslateStridePadKernelHelper(param, caffe_op)
     # weight
-    params = [
-        utils.NumpyArrayToCaffe2Tensor(pretrained_blobs[0], output + '_w')]
+    params = [utils.NumpyArrayToCaffe2Tensor(pretrained_blobs[0], f'{output}_w')]
     # bias
     if len(pretrained_blobs) == 2:
-        caffe_op.input.append(output + '_b')
+        caffe_op.input.append(f'{output}_b')
         params.append(
             utils.NumpyArrayToCaffe2Tensor(
-                pretrained_blobs[1].flatten(), output + '_b'))
+                pretrained_blobs[1].flatten(), f'{output}_b'
+            )
+        )
     # Group convolution option
     if param.group != 1:
         AddArgument(caffe_op, "group", param.group)
@@ -460,14 +453,14 @@ def TranslateDeconv(layer, pretrained_blobs, is_test, **kwargs):
     caffe_op = BaseTranslate(layer, "ConvTranspose")
     output = caffe_op.output[0]
     _TranslateStridePadKernelHelper(param, caffe_op)
-    caffe_op.input.extend([output + '_w'])
+    caffe_op.input.extend([f'{output}_w'])
     AddArgument(caffe_op, "order", "NCHW")
-    weight = utils.NumpyArrayToCaffe2Tensor(pretrained_blobs[0], output + '_w')
+    weight = utils.NumpyArrayToCaffe2Tensor(pretrained_blobs[0], f'{output}_w')
     if param.bias_term:
         bias = utils.NumpyArrayToCaffe2Tensor(
-            pretrained_blobs[1].flatten(), output + '_b'
+            pretrained_blobs[1].flatten(), f'{output}_b'
         )
-        caffe_op.input.extend([output + '_b'])
+        caffe_op.input.extend([f'{output}_b'])
         return caffe_op, [weight, bias]
     else:
         return caffe_op, [weight]
@@ -555,12 +548,8 @@ def TranslatePool3D(layer, pretrained_blobs, is_test, **kwargs):
         caffe_op,
         "strides",
         [param.temporal_stride, param.stride, param.stride])
-    temporal_pad = 0
-    spatial_pad = 0
-    if hasattr(param, 'temporal_pad'):
-        temporal_pad = param.temporal_pad
-    if hasattr(param, 'pad'):
-        spatial_pad = param.pad
+    temporal_pad = param.temporal_pad if hasattr(param, 'temporal_pad') else 0
+    spatial_pad = param.pad if hasattr(param, 'pad') else 0
     AddArgument(caffe_op, "pads", [temporal_pad, spatial_pad, spatial_pad] * 2)
     return caffe_op, []
 
@@ -568,7 +557,7 @@ def TranslatePool3D(layer, pretrained_blobs, is_test, **kwargs):
 @TranslatorRegistry.Register("LRN")
 def TranslateLRN(layer, pretrained_blobs, is_test, **kwargs):
     caffe_op = BaseTranslate(layer, "LRN")
-    caffe_op.output.extend(['_' + caffe_op.output[0] + '_scale'])
+    caffe_op.output.extend([f'_{caffe_op.output[0]}_scale'])
     param = layer.lrn_param
     if param.norm_region != caffe_pb2.LRNParameter.ACROSS_CHANNELS:
         raise ValueError(
@@ -597,7 +586,7 @@ def TranslateInnerProduct(layer, pretrained_blobs, is_test, **kwargs):
         pass
     caffe_op = BaseTranslate(layer, "FC")
     output = caffe_op.output[0]
-    caffe_op.input.extend([output + '_w', output + '_b'])
+    caffe_op.input.extend([f'{output}_w', f'{output}_b'])
     # To provide the old-style 4-dimensional blob (1, 1, dim_output, dim_input)
     # case, we always explicitly reshape the pretrained blob.
     if pretrained_blobs[0].ndim not in [2, 4]:
@@ -609,10 +598,10 @@ def TranslateInnerProduct(layer, pretrained_blobs, is_test, **kwargs):
             "should be of value 1, but I got " + str(pretrained_blobs[0].shape))
     weight = utils.NumpyArrayToCaffe2Tensor(
         pretrained_blobs[0].reshape(-1, pretrained_blobs[0].shape[-1]),
-        output + '_w'
+        f'{output}_w',
     )
     bias = utils.NumpyArrayToCaffe2Tensor(
-        pretrained_blobs[1].flatten(), output + '_b'
+        pretrained_blobs[1].flatten(), f'{output}_b'
     )
     return caffe_op, [weight, bias]
 
@@ -620,7 +609,7 @@ def TranslateInnerProduct(layer, pretrained_blobs, is_test, **kwargs):
 @TranslatorRegistry.Register("Dropout")
 def TranslateDropout(layer, pretrained_blobs, is_test, **kwargs):
     caffe_op = BaseTranslate(layer, "Dropout")
-    caffe_op.output.extend(['_' + caffe_op.output[0] + '_mask'])
+    caffe_op.output.extend([f'_{caffe_op.output[0]}_mask'])
     param = layer.dropout_param
     AddArgument(caffe_op, "ratio", param.dropout_ratio)
     if (is_test):
@@ -637,12 +626,15 @@ def TranslateSoftmax(layer, pretrained_blobs, is_test, **kwargs):
 @TranslatorRegistry.Register("SoftmaxWithLoss")
 def TranslateSoftmaxWithLoss(layer, pretrained_blobs, is_test, **kwargs):
     softmax_op = core.CreateOperator(
-        "Softmax", [layer.bottom[0]],
-        layer.bottom[0] + "_translator_autogen_softmax")
+        "Softmax",
+        [layer.bottom[0]],
+        f"{layer.bottom[0]}_translator_autogen_softmax",
+    )
     xent_op = core.CreateOperator(
         "LabelCrossEntropy",
         [softmax_op.output[0], layer.bottom[1]],
-        layer.bottom[0] + "_translator_autogen_xent")
+        f"{layer.bottom[0]}_translator_autogen_xent",
+    )
     loss_op = core.CreateOperator(
         "AveragedLoss",
         xent_op.output[0],
@@ -661,7 +653,7 @@ def TranslateAccuracy(layer, pretrained_blobs, is_test, **kwargs):
 @TranslatorRegistry.Register("Concat")
 def TranslateConcat(layer, pretrained_blobs, is_test, **kwargs):
     caffe_op = BaseTranslate(layer, "Concat")
-    caffe_op.output.extend(['_' + caffe_op.output[0] + '_dims'])
+    caffe_op.output.extend([f'_{caffe_op.output[0]}_dims'])
     AddArgument(caffe_op, "order", "NCHW")
     return caffe_op, []
 
@@ -677,10 +669,12 @@ def TranslateInstanceNorm(layer, pretrained_blobs, is_test, **kwargs):
     caffe_op = BaseTranslate(layer, "InstanceNorm")
     output = caffe_op.output[0]
     weight = utils.NumpyArrayToCaffe2Tensor(
-        pretrained_blobs[0].flatten(), output + '_w')
+        pretrained_blobs[0].flatten(), f'{output}_w'
+    )
     bias = utils.NumpyArrayToCaffe2Tensor(
-        pretrained_blobs[1].flatten(), output + '_b')
-    caffe_op.input.extend([output + '_w', output + '_b'])
+        pretrained_blobs[1].flatten(), f'{output}_b'
+    )
+    caffe_op.input.extend([f'{output}_w', f'{output}_b'])
     AddArgument(caffe_op, "order", "NCHW")
     return caffe_op, [weight, bias]
 
@@ -695,46 +689,49 @@ def TranslateBatchNorm(layer, pretrained_blobs, is_test, **kwargs):
     AddArgument(caffe_op, "order", "NCHW")
 
     caffe_op.input.extend(
-        [output + "_scale",
-         output + "_bias",
-         output + "_mean",
-         output + "_var"])
+        [
+            f"{output}_scale",
+            f"{output}_bias",
+            f"{output}_mean",
+            f"{output}_var",
+        ]
+    )
     if not is_test:
         caffe_op.output.extend(
-            [output + "_mean",
-             output + "_var",
-             output + "_saved_mean",
-             output + "_saved_var"])
+            [
+                f"{output}_mean",
+                f"{output}_var",
+                f"{output}_saved_mean",
+                f"{output}_saved_var",
+            ]
+        )
 
     n_channels = pretrained_blobs[0].shape[0]
-    if pretrained_blobs[2][0] != 0:
-        mean = utils.NumpyArrayToCaffe2Tensor(
-            (1. / pretrained_blobs[2][0]) * pretrained_blobs[0],
-            output + '_mean')
-        var = utils.NumpyArrayToCaffe2Tensor(
-            (1. / pretrained_blobs[2][0]) * pretrained_blobs[1],
-            output + '_var')
-    else:
+    if pretrained_blobs[2][0] == 0:
         raise RuntimeError("scalar is zero.")
+    mean = utils.NumpyArrayToCaffe2Tensor(
+        (1.0 / pretrained_blobs[2][0]) * pretrained_blobs[0], f'{output}_mean'
+    )
+    var = utils.NumpyArrayToCaffe2Tensor(
+        (1.0 / pretrained_blobs[2][0]) * pretrained_blobs[1], f'{output}_var'
+    )
     if len(pretrained_blobs) > 3:
         # IntelCaffe and NVCaffe uses fused BN+Scale,
         # three blobs for BN and two blobs for Scale,
         # so that the total number of blobs becomes five (including scale and bias).
         scale = utils.NumpyArrayToCaffe2Tensor(
-            pretrained_blobs[3].flatten(),
-            output + '_scale')
+            pretrained_blobs[3].flatten(), f'{output}_scale'
+        )
         bias = utils.NumpyArrayToCaffe2Tensor(
-            pretrained_blobs[4].flatten(),
-            output + '_bias')
+            pretrained_blobs[4].flatten(), f'{output}_bias'
+        )
     else:
         pretrained_blobs[2][0] = 1
         pretrained_blobs[2] = np.tile(pretrained_blobs[2], (n_channels, ))
-        scale = utils.NumpyArrayToCaffe2Tensor(
-            pretrained_blobs[2],
-            output + '_scale')
+        scale = utils.NumpyArrayToCaffe2Tensor(pretrained_blobs[2], f'{output}_scale')
         bias = utils.NumpyArrayToCaffe2Tensor(
-            np.zeros_like(pretrained_blobs[2]),
-            output + '_bias')
+            np.zeros_like(pretrained_blobs[2]), f'{output}_bias'
+        )
 
     return caffe_op, [scale, bias, mean, var]
 
@@ -762,12 +759,13 @@ def TranslateScale(layer, pretrained_blobs, is_test, **kwargs):
             raise RuntimeError("This path has not been verified yet.")
 
         output = mul_op.output[0]
-        mul_op_param = output + 'scale_w'
+        mul_op_param = f'{output}scale_w'
         mul_op.input.append(mul_op_param)
-        weights = []
-        weights.append(utils.NumpyArrayToCaffe2Tensor(
-            pretrained_blobs[0].flatten(), mul_op_param))
-
+        weights = [
+            utils.NumpyArrayToCaffe2Tensor(
+                pretrained_blobs[0].flatten(), mul_op_param
+            )
+        ]
         add_op = None
         if len(pretrained_blobs) == 1:
             # No bias-term in Scale layer
@@ -778,8 +776,8 @@ def TranslateScale(layer, pretrained_blobs, is_test, **kwargs):
             # Include a separate Add op for the bias followed by Mul.
             add_op = copy.deepcopy(mul_op)
             add_op.type = "Add"
-            add_op_param = output + 'scale_b'
-            internal_blob = output + "_internal"
+            add_op_param = f'{output}scale_b'
+            internal_blob = f"{output}_internal"
             del mul_op.output[:]
             mul_op.output.append(internal_blob)
             del add_op.input[:]
@@ -805,7 +803,7 @@ def TranslateScale(layer, pretrained_blobs, is_test, **kwargs):
 @TranslatorRegistry.Register("Reshape")
 def TranslateReshape(layer, pretrained_blobs, is_test, **kwargs):
     caffe_op = BaseTranslate(layer, "Reshape")
-    caffe_op.output.append("_" + caffe_op.input[0] + "_dims")
+    caffe_op.output.append(f"_{caffe_op.input[0]}_dims")
     reshape_param = layer.reshape_param
     AddArgument(caffe_op, 'shape', reshape_param.shape.dim)
     return caffe_op, []
@@ -824,7 +822,8 @@ def TranslateFlatten(layer, pretrained_blobs, is_test, **kwargs):
     else:
         # This could be a Reshape op, but dim size is not known here.
         raise NotImplementedError(
-            "Not supported yet for flatten_param.axis {}.".format(param.axis))
+            f"Not supported yet for flatten_param.axis {param.axis}."
+        )
 
     return caffe_op, []
 
@@ -844,7 +843,7 @@ def TranslateROIPooling(layer, pretrained_blobs, is_test, **kwargs):
         AddArgument(caffe_op, "is_test", is_test)
     else:
         # Only used for gradient computation
-        caffe_op.output.append(caffe_op.output[0] + '_argmaxes')
+        caffe_op.output.append(f'{caffe_op.output[0]}_argmaxes')
 
     param = layer.roi_pooling_param
     if param.HasField('pooled_h'):
@@ -861,8 +860,8 @@ def TranslateROIPooling(layer, pretrained_blobs, is_test, **kwargs):
 def TranslatePRelu(layer, pretrained_blobs, is_test, **kwargs):
     caffe_op = BaseTranslate(layer, "PRelu")
     output = caffe_op.output[0]
-    caffe_op.input.extend([output + '_Slope'])
-    slope = utils.NumpyArrayToCaffe2Tensor(pretrained_blobs[0], output + '_Slope')
+    caffe_op.input.extend([f'{output}_Slope'])
+    slope = utils.NumpyArrayToCaffe2Tensor(pretrained_blobs[0], f'{output}_Slope')
 
     return caffe_op, [slope]
 
@@ -934,7 +933,7 @@ if __name__ == '__main__':
 
     with open(output_predict_net, 'wb') as f:
         f.write(net.SerializeToString())
-    with open(output_predict_net + 'txt', 'w') as f:
+    with open(f'{output_predict_net}txt', 'w') as f:
         f.write(str(net))
     with open(output_init_net, 'wb') as f:
         f.write(init_net.SerializeToString())

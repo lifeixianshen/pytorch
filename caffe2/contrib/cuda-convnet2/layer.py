@@ -54,10 +54,9 @@ class ParamNeuronParser(NeuronParser):
         assert len(set(self.param_names)) == len(self.param_names)
         
     def parse(self, type):
-        m = re.match(r'^%s\s*\[([\d,\.\s\-]*)\]\s*$' % self.base_type, type)
-        if m:
+        if m := re.match(r'^%s\s*\[([\d,\.\s\-]*)\]\s*$' % self.base_type, type):
             try:
-                param_vals = [float(v.strip()) for v in m.group(1).split(',')]
+                param_vals = [float(v.strip()) for v in m[1].split(',')]
                 if len(param_vals) == len(self.param_names):
                     return {'type': self.base_type,
                             'params': dict(zip(self.param_names, param_vals)),
@@ -94,10 +93,16 @@ class ParamParser:
         assert len(set(self.param_names)) == len(self.param_names)
     
     def parse(self, type):
-        m = re.match(self.regex_str, type, flags=re.IGNORECASE)
-        if m:
+        if m := re.match(self.regex_str, type, flags=re.IGNORECASE):
             try:
-                param_vals = [ptype(v.split('=')[1].strip()) for ptype,v in zip(self.param_types, m.group(1).split(';'))] if m.group(1) is not None else []
+                param_vals = (
+                    [
+                        ptype(v.split('=')[1].strip())
+                        for ptype, v in zip(self.param_types, m[1].split(';'))
+                    ]
+                    if m[1] is not None
+                    else []
+                )
                 if len(param_vals) == len(self.param_names):
                     return {'type': self.base_type,
                             'params': dict(zip(self.param_names, param_vals))}
@@ -126,7 +131,9 @@ class MyConfigParser(cfg.SafeConfigParser):
         try:
             return [f(x.strip()) for x in v.split(',')]
         except:
-            raise LayerParsingError("Layer '%s': parameter '%s' must be ','-delimited list of %s" % (section, option, typestr))
+            raise LayerParsingError(
+                f"Layer '{section}': parameter '{option}' must be ','-delimited list of {typestr}"
+            )
         
     def safe_get_int(self, section, option, default=None):
         return self.safe_get(section, option, f=cfg.SafeConfigParser.getint, typestr='int', default=default)
@@ -152,9 +159,7 @@ class FakeConfigParser(object):
         self.dic = dic
 
     def safe_get(self, section, option, default=None):
-        if option in self.dic:
-            return self.dic[option]
-        return default
+        return self.dic[option] if option in self.dic else default
     
     def safe_get_int(self, section, option, default=None):
         return int(self.safe_get(section, option, default))
@@ -171,22 +176,32 @@ class LayerParser:
     def optimize(self, layers):
         self.dic['actsTarget'] = -1
         self.dic['actsGradTarget'] = -1
-        if len(set(len(l['gpu']) for l in layers.values() if 'inputs' in l and self.dic['name'] in l['inputs'])) > 1:
+        if (
+            len(
+                {
+                    len(l['gpu'])
+                    for l in layers.values()
+                    if 'inputs' in l and self.dic['name'] in l['inputs']
+                }
+            )
+            > 1
+        ):
 #            print set(len(l['gpu']) for l in layers.values())
-            raise LayerParsingError("Layer '%s': all next layers must have equal number of replicas." % (self.dic['name']))
+            raise LayerParsingError(
+                f"Layer '{self.dic['name']}': all next layers must have equal number of replicas."
+            )
     
     def parse_params(self, vals, parsers, param_name, human_name, num_params=1):
         dic, name = self.dic, self.dic['name']
-        
+
 #        print vals
-        if len(vals) != num_params and len(vals) != 1:
+        if len(vals) not in [num_params, 1]:
             raise LayerParsingError("Layer '%s': expected list of length %d for %s but got list of length %d."% (name, num_params, param_name, len(vals)))
         parsed = []
 #        print vals
         for v in vals:
             for p in parsers:
-                parsedv = p.parse(v)
-                if parsedv: 
+                if parsedv := p.parse(v):
                     parsed += [parsedv]
                     break
         if len(parsed) == 1 and num_params > 1:
@@ -194,7 +209,9 @@ class LayerParser:
         if len(parsed) == num_params:
             return parsed
 #        print parsed, vals
-        raise LayerParsingError("Layer '%s': unable to parse %s %s=%s." % (name, human_name, param_name, ",".join(vals)))
+        raise LayerParsingError(
+            f"""Layer '{name}': unable to parse {human_name} {param_name}={",".join(vals)}."""
+        )
     
     # Add parameters from layer parameter file
     def add_params(self, mcp):
@@ -265,29 +282,43 @@ class LayerParser:
     def _verify_num_range(self, v, param_name, _min, _max, input=-1, strconv=lambda x:'%d' % x):
         layer_name = self.dic['name'] if input < 0 else '%s[%d]' % (self.dic['name'], input)
         if _min is not None and _max is not None and (v < _min or v > _max):
-            raise LayerParsingError("Layer '%s': parameter '%s' must be in the range %s-%s" % (layer_name, param_name, strconv(_min), strconv(_max)))
+            raise LayerParsingError(
+                f"Layer '{layer_name}': parameter '{param_name}' must be in the range {strconv(_min)}-{strconv(_max)}"
+            )
         elif _min is not None and v < _min:
-            raise LayerParsingError("Layer '%s': parameter '%s' must be greater than or equal to %s" % (layer_name, param_name,  strconv(_min)))
+            raise LayerParsingError(
+                f"Layer '{layer_name}': parameter '{param_name}' must be greater than or equal to {strconv(_min)}"
+            )
         elif _max is not None and v > _max:
-            raise LayerParsingError("Layer '%s': parameter '%s' must be smaller than or equal to %s" % (layer_name, param_name,  strconv(_max)))
+            raise LayerParsingError(
+                f"Layer '{layer_name}': parameter '{param_name}' must be smaller than or equal to {strconv(_max)}"
+            )
     
     def verify_divisible(self, value, div, value_name, div_name=None, input_idx=0):
         layer_name = self.dic['name'] if len(self.dic['inputs']) == 0 else '%s[%d]' % (self.dic['name'], input_idx)
         if value % div != 0:
-            raise LayerParsingError("Layer '%s': parameter '%s' must be divisible by %s" % (layer_name, value_name, str(div) if div_name is None else "'%s'" % div_name))
+            raise LayerParsingError(
+                f"""Layer '{layer_name}': parameter '{value_name}' must be divisible by {str(div) if div_name is None else f"'{div_name}'"}"""
+            )
         
     def verify_str_in(self, value, param_name, lst, input_idx=-1):
         lname = self.dic['name'] if input_idx == -1 else ('%s[%d]' % (self.dic['name'], input_idx))
         if value not in lst:
-            raise LayerParsingError("Layer '%s': parameter '%s' must be one of %s" % (lname, param_name, ", ".join("'%s'" % s for s in lst)))
+            raise LayerParsingError(
+                f"""Layer '{lname}': parameter '{param_name}' must be one of {", ".join(f"'{s}'" for s in lst)}"""
+            )
         
     def verify_int_in(self, value, param_name, lst):
         if value not in lst:
-            raise LayerParsingError("Layer '%s': parameter '%s' must be one of %s" % (self.dic['name'], param_name, ", ".join("'%d'" % s for s in lst)))
+            raise LayerParsingError(
+                f"""Layer '{self.dic['name']}': parameter '{param_name}' must be one of {", ".join("'%d'" % s for s in lst)}"""
+            )
         
     def verify_all_ints_in(self, values, param_name, lst):
-        if len([v for v in values if v not in lst]) > 0:
-            raise LayerParsingError("Layer '%s': all parameters to '%s' must be among %s" % (self.dic['name'], param_name, ", ".join("'%d'" % s for s in lst)))
+        if [v for v in values if v not in lst]:
+            raise LayerParsingError(
+                f"""Layer '{self.dic['name']}': all parameters to '{param_name}' must be among {", ".join("'%d'" % s for s in lst)}"""
+            )
     
     def verify_input_dims(self, dims):
         for i,d in enumerate(dims):
@@ -347,7 +378,7 @@ class LayerParser:
     @staticmethod
     def register_layer_parser(ltype, cls):
         if ltype in layer_parsers:
-            raise LayerParsingError("Layer type '%s' already registered" % ltype)
+            raise LayerParsingError(f"Layer type '{ltype}' already registered")
         layer_parsers[ltype] = cls
 
 # Any layer that takes an input (i.e. non-data layer)
@@ -362,7 +393,9 @@ class LayerWithInputParser(LayerParser):
                 if auto_expand and len(self.dic[param]) == 1:
                     self.dic[param] *= len(self.dic['inputs'])
                 else:
-                    raise LayerParsingError("Layer '%s': %s list length does not match number of inputs" % (self.dic['name'], param))        
+                    raise LayerParsingError(
+                        f"Layer '{self.dic['name']}': {param} list length does not match number of inputs"
+                    )        
     
     # layers: dictionary: name -> layer
     def optimize(self, layers):
@@ -394,21 +427,23 @@ class LayerWithInputParser(LayerParser):
             
     def parse(self, name, mcp, prev_layers, model=None):
         dic = LayerParser.parse(self, name, mcp, prev_layers, model)
-        
+
         dic['inputs'] = [inp.strip() for inp in mcp.safe_get(name, 'inputs').split(',')]
-        
+
         for inp in dic['inputs']:
             if inp not in prev_layers:
-                raise LayerParsingError("Layer '%s': input layer '%s' not defined" % (name, inp))
-            
+                raise LayerParsingError(f"Layer '{name}': input layer '{inp}' not defined")
+
         dic['inputLayers'] = [prev_layers[inp] for inp in dic['inputs']]
         dic['gpu'] = mcp.safe_get_int_list(name, 'gpu', default=dic['inputLayers'][0]['gpu'])
-        dic['gpus'] = ", ".join('%s' % d for d in dic['gpu'])
+        dic['gpus'] = ", ".join(f'{d}' for d in dic['gpu'])
         dic['numReplicas'] = len(dic['gpu'])
-        
+
         if len(set(dic['gpu'])) != len(dic['gpu']):
-            raise LayerParsingError("Layer '%s': all replicas must run on different GPUs." % (name))
-        
+            raise LayerParsingError(
+                f"Layer '{name}': all replicas must run on different GPUs."
+            )
+
         for inp in dic['inputs']:
             # Data layers do not explicitly define how many replicas they have.
             # The number of replicas for a data layer is given by the number of replicas
@@ -418,21 +453,25 @@ class LayerWithInputParser(LayerParser):
                 inpl['numReplicas'] = dic['numReplicas']
             if inpl['numReplicas'] % dic['numReplicas'] != 0:
                 raise LayerParsingError("Layer '%s': number of replicas (%d) must divide number of replicas in all input layers (input %s has %d replicas)." % (name, dic['numReplicas'], inpl['name'], inpl['numReplicas']))
-        if len(set(inp['numReplicas'] for inp in dic['inputLayers'])) != 1:
-            raise LayerParsingError("Layer '%s': all input layers must have equal numbers of replicas." % (name))
+        if len({inp['numReplicas'] for inp in dic['inputLayers']}) != 1:
+            raise LayerParsingError(
+                f"Layer '{name}': all input layers must have equal numbers of replicas."
+            )
 
         # Need to also assert that all *next* layers have equal number of replicas but this is hard so it's done in Layer.optimize
         for inp in dic['inputLayers']:
             if inp['outputs'] == 0:
-                raise LayerParsingError("Layer '%s': input layer '%s' does not produce any output" % (name, inp['name']))
+                raise LayerParsingError(
+                    f"Layer '{name}': input layer '{inp['name']}' does not produce any output"
+                )
         dic['numInputs'] = [inp['outputs'] for inp in dic['inputLayers']]
-        
+
         # Layers can declare a neuron activation function to apply to their output, as a shortcut
         # to avoid declaring a separate neuron layer above themselves.
         dic['neuron'] = mcp.safe_get(name, 'neuron', default="")
         if self.num_inputs > 0 and len(dic['numInputs']) != self.num_inputs:
             raise LayerParsingError("Layer '%s': number of inputs must be %d" % (name, self.num_inputs))
-        
+
         if model:
             self.verify_all_ints_in(dic['gpu'], 'gpu', range(len(model.op.get_value('gpu'))))
         return dic
@@ -451,7 +490,9 @@ class LayerWithInputParser(LayerParser):
         
     def verify_no_grads(self):
         if LayerWithInputParser.grad_consumers_below(self.dic):
-            raise LayerParsingError("Layer '%s': layers of type '%s' cannot propagate gradient and must not be placed over layers with parameters." % (self.dic['name'], self.dic['type']))
+            raise LayerParsingError(
+                f"Layer '{self.dic['name']}': layers of type '{self.dic['type']}' cannot propagate gradient and must not be placed over layers with parameters."
+            )
 
 class NailbedLayerParser(LayerWithInputParser):
     def __init__(self):
@@ -694,12 +735,11 @@ class NeuronLayerParser(LayerWithInputParser):
     
     def parse_neuron(self, neuron_str):
         for n in neuron_parsers:
-            p = n.parse(neuron_str)
-            if p: # Successfully parsed neuron, return it
+            if p := n.parse(neuron_str):
                 self.dic['neuron'] = p
                 self.dic['usesActs'] = self.dic['neuron']['usesActs']
                 self.dic['usesInputs'] = self.dic['neuron']['usesInputs']
-                
+
                 return
         # Could not parse neuron
         # Print available neuron types
@@ -708,22 +748,26 @@ class NeuronLayerParser(LayerWithInputParser):
         ntypes = [OptionsParser._bold(colnames[0].ljust(m))] + [n.type.ljust(m) for n in neuron_parsers]
         fnames = [OptionsParser._bold(colnames[1])] + [n.func_str for n in neuron_parsers]
         usage_lines = NL.join(ntype + fname for ntype,fname in zip(ntypes, fnames))
-        
-        raise LayerParsingError("Layer '%s': unable to parse neuron type '%s'. Valid neuron types: %sWhere neurons have parameters, they must be floats." % (self.dic['name'], neuron_str, NL + usage_lines + NL))
+
+        raise LayerParsingError(
+            f"Layer '{self.dic['name']}': unable to parse neuron type '{neuron_str}'. Valid neuron types: {NL + usage_lines + NL}Where neurons have parameters, they must be floats."
+        )
     
     def detach_neuron_layer(self, src_name, layers):
         dic = self.dic
 #        self.set_defaults()
-        dic['name'] = NeuronLayerParser.get_unused_layer_name(layers, '%s_neuron' % src_name)
+        dic['name'] = NeuronLayerParser.get_unused_layer_name(
+            layers, f'{src_name}_neuron'
+        )
         dic['type'] = 'neuron'
         dic['inputs'] = src_name
         dic['neuron'] = layers[src_name]['neuron']
         dic['gpu'] = layers[src_name]['gpu']
-        
+
         # Yes it's not entirely correct to pass all of layers as prev_layers, but it's harmless
         dic = self.parse(dic['name'], FakeConfigParser(dic), layers)
         dic['src_layer'] = src_name
-        
+
         # Link upper layers to this new one
         for l in layers.values():
             if 'inputs' in l:
@@ -825,9 +869,7 @@ class WeightLayerParser(LayerWithInputParser):
     @staticmethod
     def get_layer_name(name_str):
         m = WeightLayerParser.LAYER_PAT.match(name_str)
-        if not m:
-            return None
-        return m.group(1), m.group(2)
+        return None if not m else (m.group(1), m.group(2))
         
     def add_params(self, mcp):
         LayerWithInputParser.add_params(self, mcp)
@@ -841,7 +883,7 @@ class WeightLayerParser(LayerWithInputParser):
         self.verify_num_params(['momW', 'wc', 'wball'])
 #        dic['wballNormed'] = [wball * nweights for wball,nweights in zip(dic['wball'], dic['weightsPerFilter'])]
         dic['wballNormed'] = dic['wball']
-        
+
         # Convert from old-style 0.001,0.02 hyperparam specification to new-stye
         # const[base=0.001],const[base=0.02] and so forth
         def convert_scalars_to_schedules(scalars):
@@ -849,12 +891,12 @@ class WeightLayerParser(LayerWithInputParser):
             for i,p in enumerate(parts):
                 p = p.strip()
                 if re.match('(?:\d*\.)?\d+$', p):
-                    parts[i] = 'const[base=%s]' % p
+                    parts[i] = f'const[base={p}]'
             return parts
-            
+
         dic['epsW'] = self.parse_params(convert_scalars_to_schedules(mcp.safe_get(name, 'epsW')), lrs_parsers, 'epsW', 'learning rate schedule', num_params=len(dic['inputs']))
         dic['epsB'] = self.parse_params(convert_scalars_to_schedules(mcp.safe_get(name, 'epsB')), lrs_parsers, 'epsB', 'learning rate schedule', num_params=1)[0]
-        
+
         dic['updatePeriod'] = mcp.safe_get_int(name, 'updatePeriod', default=0) # 0 means update as often as possible
         # TODO: assert that updatePeriod is a multiple of active pass period, which is unknown here.
         # the assert has to go in some post-processing step..
@@ -951,11 +993,11 @@ class WeightLayerParser(LayerWithInputParser):
         dic['initWFunc'] = mcp.safe_get(name, 'initWFunc', default="")
         dic['initBFunc'] = mcp.safe_get(name, 'initBFunc', default="")
         # Find shared weight matrices
-        
+
         dic['weightSource'] = mcp.safe_get_list(name, 'weightSource', default=[''] * len(dic['inputs']))
         self.verify_num_params(['initW'])
         self.verify_num_params(['weightSource'], auto_expand=False)
-        
+
         dic['weightSourceLayers'] = []
         dic['weightSourceMatrixIndices'] = []
 
@@ -965,19 +1007,27 @@ class WeightLayerParser(LayerWithInputParser):
             if src_name != '':
                 src_layer_match = WeightLayerParser.get_layer_name(src_name)
                 if src_layer_match is None:
-                    raise LayerParsingError("Layer '%s': unable to parse weight sharing source '%s'. Format is layer[idx] or just layer, in which case idx=0 is used." % (name, src_name))
+                    raise LayerParsingError(
+                        f"Layer '{name}': unable to parse weight sharing source '{src_name}'. Format is layer[idx] or just layer, in which case idx=0 is used."
+                    )
                 src_layer_name = src_layer_match[0]
                 src_layer_matrix_idx = int(src_layer_match[1]) if src_layer_match[1] is not None else 0
 
                 if src_layer_name not in prev_layers and src_layer_name != name:
-                    raise LayerParsingError("Layer '%s': weight sharing source layer '%s' does not exist." % (name, src_layer_name))
-                
+                    raise LayerParsingError(
+                        f"Layer '{name}': weight sharing source layer '{src_layer_name}' does not exist."
+                    )
+
 #                src_layer_idx = prev_names.index(src_layer_name) if src_layer_name != name else len(prev_names)
                 src_layer = prev_layers[src_layer_name] if src_layer_name != name else dic
                 if src_layer['gpu'] != dic['gpu']:
-                    raise LayerParsingError("Layer '%s': weight sharing source layer '%s' runs on GPUs %s, while '%s' runs on GPUs %s." % (name, src_layer_name, src_layer['gpu'], name, dic['gpu']))
+                    raise LayerParsingError(
+                        f"Layer '{name}': weight sharing source layer '{src_layer_name}' runs on GPUs {src_layer['gpu']}, while '{name}' runs on GPUs {dic['gpu']}."
+                    )
                 if src_layer['type'] != dic['type']:
-                    raise LayerParsingError("Layer '%s': weight sharing source layer '%s' is of type '%s'; should be '%s'." % (name, src_layer_name, src_layer['type'], dic['type']))
+                    raise LayerParsingError(
+                        f"Layer '{name}': weight sharing source layer '{src_layer_name}' is of type '{src_layer['type']}'; should be '{dic['type']}'."
+                    )
                 if src_layer_name != name and len(src_layer['weights']) <= src_layer_matrix_idx:
                     raise LayerParsingError("Layer '%s': weight sharing source layer '%s' has %d weight matrices, but '%s[%d]' requested." % (name, src_layer_name, len(src_layer['weights']), src_name, src_layer_matrix_idx))
                 if src_layer_name == name and src_layer_matrix_idx >= i:
@@ -985,7 +1035,7 @@ class WeightLayerParser(LayerWithInputParser):
 
             dic['weightSourceLayers'] += [src_layer_name]
             dic['weightSourceMatrixIndices'] += [src_layer_matrix_idx]
-                
+
         return dic
         
 class FCLayerParser(WeightLayerParser):
@@ -1074,19 +1124,19 @@ class LocalLayerParser(WeightLayerParser):
         dic['initCFunc'] = mcp.safe_get(name, 'initCFunc', default='')
         dic['modulesX'] = mcp.safe_get_int(name, 'modulesX', default=0)
 
-        
+
         self.verify_num_params(['channels', 'padding', 'stride', 'filterSize', \
-                                'filters', 'groups', 'initW'])
-        
+                                    'filters', 'groups', 'initW'])
+
         self.verify_num_range(dic['stride'], 'stride', 1, None)
-        self.verify_num_range(dic['filterSize'],'filterSize', 1, None)  
+        self.verify_num_range(dic['filterSize'],'filterSize', 1, None)
         self.verify_num_range(dic['padding'], 'padding', 0, None)
         self.verify_num_range(dic['channels'], 'channels', 1, None)
         self.verify_num_range(dic['groups'], 'groups', 1, None)
         self.verify_num_range(dic['modulesX'], 'modulesX', 0, None)
         for i in xrange(len(dic['filters'])):
             self.verify_divisible(dic['filters'][i], 16, 'filters', input_idx=i)
-        
+
         # Computed values
         dic['imgPixels'] = [numInputs/channels for numInputs,channels in zip(dic['numInputs'], dic['channels'])]
         dic['imgSize'] = [int(n.sqrt(imgPixels)) for imgPixels in dic['imgPixels']]
@@ -1099,9 +1149,11 @@ class LocalLayerParser(WeightLayerParser):
             dic['modulesX'] = [dic['modulesX']] * len(dic['inputs'])
 
         dic['filterChannels'] = [channels/groups for channels,groups in zip(dic['channels'], dic['groups'])]
-        
+
         if len(set(dic['modulesX'])) != 1 or len(set(dic['filters'])) != 1:
-            raise LayerParsingError("Layer '%s': all inputs must produce equally-dimensioned output. Dimensions are: %s." % (name, ", ".join("%dx%dx%d" % (filters, modulesX, modulesX) for filters,modulesX in zip(dic['filters'], dic['modulesX']))))
+            raise LayerParsingError(
+                f"""Layer '{name}': all inputs must produce equally-dimensioned output. Dimensions are: {", ".join("%dx%dx%d" % (filters, modulesX, modulesX) for filters, modulesX in zip(dic['filters'], dic['modulesX']))}."""
+            )
 
         dic['modulesX'] = dic['modulesX'][0]
         dic['modules'] = dic['modulesX']**2
@@ -1123,12 +1175,12 @@ class LocalLayerParser(WeightLayerParser):
             self.verify_divisible(dic['channels'][i], dic['groups'][i], 'channels', 'groups', input_idx=i)
 
             self.verify_divisible(dic['filters'], 16*dic['groups'][i], 'filters * groups', input_idx=i)
-            
-        
+
+
             dic['padding'][i] = -dic['padding'][i]
 #        dic['overSample'] = [groups*filterChannels/channels for groups,filterChannels,channels in zip(dic['groups'], dic['filterChannels'], dic['channels'])]
         dic['weightsPerFilter'] = [fc * (fz**2) for fc, fz in zip(dic['filterChannels'], dic['filterSize'])]
-        
+
         return dic    
 
 class ConvLayerParser(LocalLayerParser):
@@ -1142,7 +1194,9 @@ class ConvLayerParser(LocalLayerParser):
         self.verify_num_params(['wcNormMax', 'wcNormMin'])
         for min,max in zip(self.dic['wcNormMin'], self.dic['wcNormMax']):
             if min > max:
-                raise LayerParsingError("Layer '%s': wcNormMin must be <= wcNormMax." % (self.dic['name']))
+                raise LayerParsingError(
+                    f"Layer '{self.dic['name']}': wcNormMin must be <= wcNormMax."
+                )
         
     def parse(self, name, mcp, prev_layers, model):
         dic = LocalLayerParser.parse(self, name, mcp, prev_layers, model)
@@ -1375,9 +1429,11 @@ class CostParser(LayerWithInputParser):
         # Aggregated costs only produce outputs which are additive.
         for c in dic['children']:
             if c not in prev_layers:
-                raise LayerParsingError("Layer '%s': child cost layer '%s' not defined" % (name, c))
+                raise LayerParsingError(f"Layer '{name}': child cost layer '{c}' not defined")
             if prev_layers[c]['type'] != dic['type']:
-                raise LayerParsingError("Layer '%s': child cost layer '%s' must have same type as parent" % (name, c))
+                raise LayerParsingError(
+                    f"Layer '{name}': child cost layer '{c}' must have same type as parent"
+                )
             prev_layers[c]['aggregated'] = 1
         dic['aggregated'] = dic['children'] != []
         del dic['neuron']
@@ -1415,7 +1471,9 @@ class LogregCostParser(CostParser):
         dic, name = self.dic, self.dic['name']
         dic['topk'] = mcp.safe_get_int(name, 'topk', default=1)
         if dic['topk'] > dic['numInputs'][1]:
-            raise LayerParsingError("Layer '%s': parameter 'topk'must not have value greater than the number of classess."  % (name))
+            raise LayerParsingError(
+                f"Layer '{name}': parameter 'topk'must not have value greater than the number of classess."
+            )
         
     def parse(self, name, mcp, prev_layers, model):
         dic = CostParser.parse(self, name, mcp, prev_layers, model)

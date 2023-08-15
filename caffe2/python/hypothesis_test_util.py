@@ -330,8 +330,8 @@ def runOpOnInput(
     with temp_workspace():
         if (len(op.input) > len(inputs)):
             raise ValueError(
-                'must supply an input for each input on the op: %s vs %s' %
-                (op.input, inputs))
+                f'must supply an input for each input on the op: {op.input} vs {inputs}'
+            )
         _input_device_options = input_device_options or \
             core.InferOpBlobDevicesAsDict(op)[0]
         for (n, b) in zip(op.input, inputs):
@@ -431,7 +431,7 @@ class HypothesisTestCase(test_util.TestCase):
         self.assertEqual(grad.shape, grad_estimated.shape)
         self.assertTrue(
             res,
-            "Gradient check failed for input " + str(op.input[outputs_to_check])
+            f"Gradient check failed for input {str(op.input[outputs_to_check])}",
         )
 
     def _assertGradReferenceChecks(
@@ -443,7 +443,7 @@ class HypothesisTestCase(test_util.TestCase):
         grad_reference,
         threshold=1e-4,
     ):
-        grad_blob_name = output_to_grad + '_grad'
+        grad_blob_name = f'{output_to_grad}_grad'
         grad_ops, grad_map = core.GradientRegistry.GetBackwardPass(
             [op], {output_to_grad: grad_blob_name})
         output_grad = workspace.FetchBlob(output_to_grad)
@@ -496,26 +496,22 @@ class HypothesisTestCase(test_util.TestCase):
             elif output.dtype == np.dtype('int64'):
                 correct_type = caffe2_pb2.TensorProto.INT64
             else:
-                correct_type = "unknown {}".format(np.dtype)
+                correct_type = f"unknown {np.dtype}"
         else:
             correct_type = str(type(output))
         try:
             np.testing.assert_array_equal(
                 np.array(shapes[name]).astype(np.int32),
                 np.array(output.shape).astype(np.int32),
-                err_msg='Shape {} mismatch: {} vs. {}'.format(
-                    name,
-                    shapes[name],
-                    output.shape))
+                err_msg=f'Shape {name} mismatch: {shapes[name]} vs. {output.shape}',
+            )
             # BUG: Workspace blob type not being set correctly T16121392
             if correct_type != caffe2_pb2.TensorProto.INT32:
                 return
             np.testing.assert_equal(
                 types[name],
                 correct_type,
-                err_msg='Type {} mismatch: {} vs. {}'.format(
-                    name, types[name], correct_type,
-                )
+                err_msg=f'Type {name} mismatch: {types[name]} vs. {correct_type}',
             )
         except AssertionError as e:
             # Temporarily catch these assertion errors when validating
@@ -564,10 +560,10 @@ class HypothesisTestCase(test_util.TestCase):
         with temp_workspace():
             if (len(op.input) > len(inputs)):
                 raise ValueError(
-                    'must supply an input for each input on the op: %s vs %s' %
-                    (op.input, inputs))
+                    f'must supply an input for each input on the op: {op.input} vs {inputs}'
+                )
             _input_device_options = input_device_options or \
-                core.InferOpBlobDevicesAsDict(op)[0]
+                    core.InferOpBlobDevicesAsDict(op)[0]
             for (n, b) in zip(op.input, inputs):
                 workspace.FeedBlob(
                     n,
@@ -588,8 +584,7 @@ class HypothesisTestCase(test_util.TestCase):
                     raise e
             workspace.RunNetOnce(net)
             reference_outputs = reference(*inputs)
-            if not (isinstance(reference_outputs, tuple) or
-                    isinstance(reference_outputs, list)):
+            if not (isinstance(reference_outputs, (tuple, list))):
                 raise RuntimeError(
                     "You are providing a wrong reference implementation. A "
                     "proper one should return a tuple/list of numpy arrays.")
@@ -618,8 +613,8 @@ class HypothesisTestCase(test_util.TestCase):
                 outs.append(output)
             if grad_reference is not None:
                 assert output_to_grad is not None, \
-                    "If grad_reference is set," \
-                    "output_to_grad has to be set as well"
+                        "If grad_reference is set," \
+                        "output_to_grad has to be set as well"
 
                 with core.DeviceScope(device_option):
                     self._assertGradReferenceChecks(

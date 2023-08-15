@@ -64,10 +64,10 @@ def maskNallocate(weight_name):
     wcsr = w_csr.data
     iw = w_csr.indptr
     jw = w_csr.indices
-    workspace.FeedBlob(weight_name + "wcsr", wcsr)
-    workspace.FeedBlob(weight_name + "iw", iw)
-    workspace.FeedBlob(weight_name + "jw", jw)
-    return weight_name + "wcsr", weight_name + "iw", weight_name + "jw"
+    workspace.FeedBlob(f"{weight_name}wcsr", wcsr)
+    workspace.FeedBlob(f"{weight_name}iw", iw)
+    workspace.FeedBlob(f"{weight_name}jw", jw)
+    return f"{weight_name}wcsr", f"{weight_name}iw", f"{weight_name}jw"
 
 
 def transFCRelu(cur, id2node, name2id, ops, model):
@@ -79,7 +79,7 @@ def transFCRelu(cur, id2node, name2id, ops, model):
     pre = cur.prev.itervalues().next()
     # Create a node /op and insert it.
     # TODO(wyiming): check whether it is correct here
-    current_blob = model.Transpose(cur.op.input[0], cur.op.input[0] + "_trans")
+    current_blob = model.Transpose(cur.op.input[0], f"{cur.op.input[0]}_trans")
 #     print model.net.Proto()
     trans_op = model.net.Proto().op[-1]
     trans_node = NetDefNode(trans_op.output[0], "Transpose", pre, trans_op)
@@ -90,7 +90,7 @@ def transFCRelu(cur, id2node, name2id, ops, model):
     while True:
         # breakup with the parent
         cur.deleteInput(pre)
-        if not (cur.optype == "FC_Prune" or cur.optype == "Relu"):
+        if cur.optype not in ["FC_Prune", "Relu"]:
             print("Reaching the end of the chain")
             break
         if len(cur.ops) > 1:
@@ -100,13 +100,18 @@ def transFCRelu(cur, id2node, name2id, ops, model):
             wcsr, iw, jw = maskNallocate(op.input[1])
             bias_name = op.input[3]
             # TODO(wyiming): create a new Op here
-            current_blob = model.FC_Sparse(current_blob,
-                                           cur.op.output[0] + "_Sparse",
-                                           wcsr, iw, jw, bias_name)
+            current_blob = model.FC_Sparse(
+                current_blob,
+                f"{cur.op.output[0]}_Sparse",
+                wcsr,
+                iw,
+                jw,
+                bias_name,
+            )
             sps_op = model.net.Proto().op[-1]
-            sps_node = NetDefNode(cur.op.output[0] + "_Sparse",
-                                  "FC_Sparse",
-                                  pre_new, sps_op)
+            sps_node = NetDefNode(
+                f"{cur.op.output[0]}_Sparse", "FC_Sparse", pre_new, sps_op
+            )
             sps_node.visited = True
             pre_new = sps_node
         if cur.optype == "Relu":
@@ -122,7 +127,7 @@ def transFCRelu(cur, id2node, name2id, ops, model):
         pre = cur
         flag = False
         for _, temp in cur.ops.iteritems():
-            if temp.optype == "Relu" or temp.optype == "FC_Prune":
+            if temp.optype in ["Relu", "FC_Prune"]:
                 flag = True
                 cur = temp
         if not flag:
@@ -157,11 +162,9 @@ def net2list(net_root):
     """
     Use topological order(BFS) to print the op of a net in a list
     """
-    bfs_queue = []
     op_list = []
     cur = net_root
-    for _, n in cur.ops.iteritems():
-        bfs_queue.append(n)
+    bfs_queue = [n for _, n in cur.ops.iteritems()]
     while bfs_queue:
         node = bfs_queue[0]
         bfs_queue = bfs_queue[1:]

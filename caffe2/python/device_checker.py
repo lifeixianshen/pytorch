@@ -39,7 +39,7 @@ class DeviceChecker(object):
         for i, device_option in enumerate(self._device_options):
             op.device_option.CopyFrom(device_option)
             _input_device_options = input_device_options or \
-                InferOpBlobDevicesAsDict(op)[0]
+                    InferOpBlobDevicesAsDict(op)[0]
             print(_input_device_options)
             for i, arr in enumerate(inputs):
                 workspace.FeedBlob(
@@ -60,16 +60,16 @@ class DeviceChecker(object):
                 y = results[0][j]
                 if not np.allclose(x, y,
                                    atol=self._threshold, rtol=self._threshold):
-                    print('Failure in checking device option {}'
-                          ' and output {}. The outputs are:'
-                          .format(i, op.output[outputs_to_check[j]]))
+                    print(
+                        f'Failure in checking device option {i} and output {op.output[outputs_to_check[j]]}. The outputs are:'
+                    )
                     print(x.flatten())
                     print(y.flatten())
                     print(np.max(np.abs(x - y)))
                     success = False
-                # else:
-                #     print ('Passed device pair (0, %d), %s %s' %
-                #            (i, outputs_to_check[j], y.shape))
+                        # else:
+                        #     print ('Passed device pair (0, %d), %s %s' %
+                        #            (i, outputs_to_check[j], y.shape))
         workspace.SwitchWorkspace(old_ws_name)
         return success
 
@@ -84,7 +84,7 @@ class DeviceChecker(object):
         old_ws_name = workspace.CurrentWorkspace()
         results = []
         if blobs_to_check is None:
-            blobs_to_check = sum([list(op.output) for op in net.op], [])
+            blobs_to_check = sum((list(op.output) for op in net.op), [])
         blobs_to_check = [b for b in blobs_to_check if b not in ignore]
         workspace.SwitchWorkspace("_device_check_", True)
         for device_option in self._device_options:
@@ -105,16 +105,16 @@ class DeviceChecker(object):
                 y = results[0][j]
                 if not np.allclose(x, y,
                                    atol=self._threshold, rtol=self._threshold):
-                    print('Failure in checking device option {}'
-                          ' and output {}. The outputs are:'
-                          .format(i, blobs_to_check[j]))
+                    print(
+                        f'Failure in checking device option {i} and output {blobs_to_check[j]}. The outputs are:'
+                    )
                     print(x.flatten())
                     print(y.flatten())
                     print(np.max(np.abs(x - y)))
                     success = False
-                # else:
-                #     print ('Passed device pair (%d, %d), %s %s: %s' %
-                #            (i, j, blobs_to_check[j], y.shape,
-                #             str(y.flatten())))
+                        # else:
+                        #     print ('Passed device pair (%d, %d), %s %s: %s' %
+                        #            (i, j, blobs_to_check[j], y.shape,
+                        #             str(y.flatten())))
         workspace.SwitchWorkspace(old_ws_name)
         return success

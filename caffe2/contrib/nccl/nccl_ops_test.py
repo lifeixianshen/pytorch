@@ -45,9 +45,9 @@ class NCCLOpsTest(hu.HypothesisTestCase):
            in_place=st.booleans())
     def test_nccl_allreduce(self, n, m, in_place):
         xs = [np.random.randn(m).astype(np.float32) for i in range(n)]
-        inputs = [str("x_{}".format(i)) for i in range(n)]
+        inputs = ["x_{}".format(i) for i in range(n)]
         prefix = "" if in_place else "o"
-        outputs = [str("{}x_{}".format(prefix, i)) for i in range(n)]
+        outputs = ["{}x_{}".format(prefix, i) for i in range(n)]
         op = core.CreateOperator("NCCLAllreduce", inputs, outputs)
         input_device_options = {n: gpu_device(i) for i, n in enumerate(inputs)}
 
@@ -70,7 +70,7 @@ class NCCLOpsTest(hu.HypothesisTestCase):
     def test_nccl_broadcast(self, n, m, root):
         assume(root < n)
         xs = [np.random.randn(m).astype(np.float32) for i in range(n)]
-        inputs = [str("x_{}".format(i)) for i in range(n)]
+        inputs = ["x_{}".format(i) for i in range(n)]
         op = core.CreateOperator("NCCLBroadcast", inputs, inputs, root=root)
         input_device_options = {n: gpu_device(i) for i, n in enumerate(inputs)}
 
@@ -90,7 +90,7 @@ class NCCLOpsTest(hu.HypothesisTestCase):
     def test_nccl_reduce(self, n, m, root, in_place):
         assume(in_place is False or root == 0)
         xs = [np.random.randn(m).astype(np.float32) for i in range(n)]
-        inputs = [str("x_{}".format(i)) for i in range(n)]
+        inputs = ["x_{}".format(i) for i in range(n)]
         op = core.CreateOperator(
             "NCCLReduce", inputs,
             inputs[root] if in_place else b"o", root=root)
@@ -108,8 +108,8 @@ class NCCLOpsTest(hu.HypothesisTestCase):
            m=st.integers(min_value=1, max_value=1000))
     def test_nccl_allgather(self, n, m):
         xs = [np.random.randn(m).astype(np.float32) for i in range(n)]
-        inputs = [str("x_{}".format(i)) for i in range(n)]
-        outputs = [str("o_{}".format(i)) for i in range(n)]
+        inputs = ["x_{}".format(i) for i in range(n)]
+        outputs = ["o_{}".format(i) for i in range(n)]
         op = core.CreateOperator("NCCLAllGather", inputs, outputs)
         input_device_options = {n: gpu_device(i) for i, n in enumerate(inputs)}
 
@@ -128,8 +128,8 @@ class NCCLOpsTest(hu.HypothesisTestCase):
            m=st.integers(min_value=1, max_value=1000))
     def test_nccl_reduce_scatter(self, n, m):
         xs = [np.random.randn(n, m).astype(np.float32) for i in range(n)]
-        inputs = [str("x_{}".format(i)) for i in range(n)]
-        outputs = [str("o_{}".format(i)) for i in range(n)]
+        inputs = ["x_{}".format(i) for i in range(n)]
+        outputs = ["o_{}".format(i) for i in range(n)]
         op = core.CreateOperator("NCCLReduceScatter", inputs, outputs)
         input_device_options = {n: gpu_device(i) for i, n in enumerate(inputs)}
 
@@ -149,8 +149,8 @@ class NCCLOpsTest(hu.HypothesisTestCase):
            iters=st.integers(min_value=1, max_value=100),
            net_type=st.sampled_from(["dag", "async_dag", "simple"]))
     def _test_nccl_sync(self, n, m, iters, net_type):
-        inputs = [str("x_{}".format(i)) for i in range(n)]
-        extra_inputs = [str("xe_{}".format(i)) for i in range(n)]
+        inputs = [f"x_{i}" for i in range(n)]
+        extra_inputs = [f"xe_{i}" for i in range(n)]
         net = core.Net("asdf")
         net.Proto().type = net_type
         net.Proto().num_workers = n
@@ -172,11 +172,10 @@ class NCCLOpsTest(hu.HypothesisTestCase):
     def test_timings(self):
         for n in range(2, workspace.NumCudaDevices()):
             for in_place in [False, True]:
-                xs = [np.random.randn(1e7).astype(np.float32)
-                      for i in range(n)]
-                inputs = [str("x_{}".format(i)) for i in range(n)]
+                xs = [np.random.randn(1e7).astype(np.float32) for _ in range(n)]
+                inputs = [f"x_{i}" for i in range(n)]
                 prefix = "" if in_place else "o"
-                outputs = [str("{}x_{}".format(prefix, i)) for i in range(n)]
+                outputs = [f"{prefix}x_{i}" for i in range(n)]
 
                 net = core.Net("test")
                 net.NCCLAllreduce(inputs, outputs)

@@ -53,10 +53,9 @@ class ModelTrainerLog():
 
     def __init__(self, expname, runtime_args, external_loggers=None):
         now = datetime.datetime.fromtimestamp(time.time())
-        self.experiment_id = \
-            "{}_{}".format(expname, now.strftime('%Y%m%d_%H%M%S'))
-        self.filename = "{}.log".format(self.experiment_id)
-        self.logstr("# %s" % str(runtime_args))
+        self.experiment_id = f"{expname}_{now.strftime('%Y%m%d_%H%M%S')}"
+        self.filename = f"{self.experiment_id}.log"
+        self.logstr(f"# {str(runtime_args)}")
         self.headers = None
         self.start_time = time.time()
         self.last_time = self.start_time
@@ -92,11 +91,7 @@ class ModelTrainerLog():
         logdict['input_count'] = delta_count
         logdict['cumulative_input_count'] = input_count
         logdict['cumulative_batch_count'] = batch_count
-        if delta_t > 0:
-            logdict['inputs_per_sec'] = delta_count / delta_t
-        else:
-            logdict['inputs_per_sec'] = 0.0
-
+        logdict['inputs_per_sec'] = delta_count / delta_t if delta_t > 0 else 0.0
         for k in sorted(viewkeys(additional_values)):
             logdict[k] = additional_values[k]
 
@@ -111,5 +106,4 @@ class ModelTrainerLog():
             try:
                 logger.log(logdict)
             except Exception as e:
-                logging.warn(
-                    "Failed to call ExternalLogger: {}".format(e), e)
+                logging.warn(f"Failed to call ExternalLogger: {e}", e)

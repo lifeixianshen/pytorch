@@ -124,7 +124,7 @@ def init_data_input_workers(
     # Launch fetch worker threads
     worker_ids = [
         global_coordinator.get_new_worker_id()
-        for i in range(num_worker_threads)
+        for _ in range(num_worker_threads)
     ]
 
     # Create coordinator object
@@ -134,17 +134,29 @@ def init_data_input_workers(
     workers = [
         threading.Thread(
             target=run_worker,
-            name="data_workers fetcher id {}".format(worker_id),
-            args=[coordinator,
-                  DataWorker(coordinator, worker_id, fetch_fun, metrics,
-                             batch_size, batch_feeder)],
-        ) for worker_id in worker_ids
+            name=f"data_workers fetcher id {worker_id}",
+            args=[
+                coordinator,
+                DataWorker(
+                    coordinator,
+                    worker_id,
+                    fetch_fun,
+                    metrics,
+                    batch_size,
+                    batch_feeder,
+                ),
+            ],
+        )
+        for worker_id in worker_ids
     ]
 
-    workers.append(threading.Thread(
-        target=enqueuer,
-        name="Enqueuer {} {}".format(input_source_name, scope.CurrentNameScope()),
-        args=[coordinator, batch_feeder]))
+    workers.append(
+        threading.Thread(
+            target=enqueuer,
+            name=f"Enqueuer {input_source_name} {scope.CurrentNameScope()}",
+            args=[coordinator, batch_feeder],
+        )
+    )
     coordinator._workers = workers
     global_coordinator.add(coordinator)
 
@@ -203,8 +215,9 @@ class BatchFeeder(State):
                 return self._internal_queue.get(block=True, timeout=0.5)
             except Queue.Empty:
                 if time.time() - last_warning > 10.0:
-                    log.warning("** Data input is slow: (still) no data in {} secs.".format(
-                        time.time() - start_time))
+                    log.warning(
+                        f"** Data input is slow: (still) no data in {time.time() - start_time} secs."
+                    )
                     last_warning = time.time()
                 continue
         return None
@@ -215,18 +228,15 @@ class BatchFeeder(State):
             return False
 
         assert len(chunk) == len(self._input_blob_names), \
-            "Expecting data blob for each input"
+                "Expecting data blob for each input"
         for d in chunk:
             assert isinstance(d, np.ndarray), \
-                "Fetcher function must return a numpy array"
+                    "Fetcher function must return a numpy array"
         if not self._dont_rebatch:
-            j = 1
-            for d in chunk[1:]:
+            for j, d in enumerate(chunk[1:], start=1):
                 assert d.shape[self._batch_columns[j]] == \
-                    chunk[0].shape[self._batch_columns[0]], \
-                    "Each returned input must have equal number of samples"
-                j += 1
-
+                        chunk[0].shape[self._batch_columns[0]], \
+                        "Each returned input must have equal number of samples"
         if len(chunk) == 0:
             log.warning("Worker provided zero length input")
             return False
@@ -241,8 +251,9 @@ class BatchFeeder(State):
             try:
                 qsize = self._internal_queue.qsize()
                 if qsize < 2 and (time.time() - self._last_warning) > LOG_INT_SECS:
-                    log.warning("Warning, data loading lagging behind: " +
-                                "queue size={}, name={}".format(qsize, self._input_source_name))
+                    log.warning(
+                        f"Warning, data loading lagging behind: queue size={qsize}, name={self._input_source_name}"
+                    )
                     self._last_warning = time.time()
                 self._counter += 1
                 self._internal_queue.put(chunk, block=True, timeout=0.5)
@@ -269,7 +280,7 @@ class BatchFeeder(State):
             self._enqueue_batch_direct(data_input_coordinator)
             return
 
-        cur_batch = [np.array([]) for d in self._input_blob_names]
+        cur_batch = [np.array([]) for _ in self._input_blob_names]
         first_batch_col = self._batch_columns[0]
 
         # Collect data until we have a full batch size
@@ -324,11 +335,9 @@ class BatchFeeder(State):
         self._scratch_status = {}
         for blob_name in self._input_blob_names:
             scratch_name = self._namescope + blob_name + \
-                "_scratch_" + self._input_source_name
+                    "_scratch_" + self._input_source_name
             self._scratch_blob[blob_name] = core.BlobReference(scratch_name)
-            self._scratch_status[blob_name] = core.BlobReference(
-                scratch_name + "_status"
-            )
+            self._scratch_status[blob_name] = core.BlobReference(f"{scratch_name}_status")
 
         # Feed empty arrays to the scratch blobs here, so that there won't be
         # race conditions when calling FeedBlob (which calls wworkspace
@@ -374,7 +383,7 @@ class BatchFeeder(State):
             return core.ScopedBlobReference(queue_name)
 
         for blob_name in self._input_blob_names:
-            qname = blob_name + "_c2queue" + "_" + self._input_source_name
+            qname = f"{blob_name}_c2queue_{self._input_source_name}"
             q = create_queue(
                 qname, num_blobs=1, capacity=self._c2_queue_capacity
             )
@@ -395,12 +404,10 @@ class BatchFeeder(State):
         if delta_seconds >= LOG_INT_SECS or force:
             inputs_per_sec = int(self._inputs / delta_seconds)
             qsize = self._internal_queue.qsize()
-            log.info("{}/{}: {} inputs/sec".format(
-                self._input_source_name,
-                self._namescope,
-                inputs_per_sec,
-            ))
-            log.info("-- queue: {} batches".format(qsize))
+            log.info(
+                f"{self._input_source_name}/{self._namescope}: {inputs_per_sec} inputs/sec"
+            )
+            log.info(f"-- queue: {qsize} batches")
             # log and reset perf metrics
             self._metrics.put_metric(
                 'inputs_per_sec', inputs_per_sec, False)
@@ -425,7 +432,7 @@ class GlobalCoordinator(GlobalWorkerCoordinator):
         return self._queues[queue_name]
 
     def reset_data_input(self, namescope, name, net, batch_size):
-        log.info("Reset data input {}, batch size {}: ".format(name, batch_size))
+        log.info(f"Reset data input {name}, batch size {batch_size}: ")
         for c in self._coordinators:
             if c._worker_name == name and c._state._namescope == namescope:
                 c._state._batch_size = batch_size

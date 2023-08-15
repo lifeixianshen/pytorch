@@ -33,15 +33,13 @@ class TestFileStoreHandlerOp(TestCase):
 
     def create_store_handler(self):
         # Use new path for every test so they are isolated
-        path = self.tmpdir + "/" + str(TestFileStoreHandlerOp.testCounter)
+        path = f"{self.tmpdir}/{str(TestFileStoreHandlerOp.testCounter)}"
 
         # Ensure path exists (including counter)
         try:
             os.makedirs(path)
         except OSError as exc:
-            if exc.errno == errno.EEXIST and os.path.isdir(path):
-                pass
-            else:
+            if exc.errno != errno.EEXIST or not os.path.isdir(path):
                 raise
 
         store_handler = "store_handler"

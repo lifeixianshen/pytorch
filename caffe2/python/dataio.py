@@ -137,9 +137,8 @@ class Reader(object):
         if external_should_stop is not None:
             should_stop = reader_net.Or([external_should_stop, should_stop])
         read_step = core.execution_step(
-            '{}_step'.format(reader_net_name),
-            reader_net,
-            should_stop_blob=should_stop)
+            f'{reader_net_name}_step', reader_net, should_stop_blob=should_stop
+        )
         return (read_step, fields)
 
 
@@ -549,7 +548,7 @@ class CompositeReader(Reader):
         for name, reader in zip(self._names, self._readers):
             sub_read_nets, should_stop, record = reader.read_record_ex(
                 local_init_net, local_finish_net)
-            stop_net = core.Net("{}_stop".format(name))
+            stop_net = core.Net(f"{name}_stop")
             stop_net.Copy(should_stop, local_should_stop)
             sub_read_nets.append(stop_net)
             read_nets.extend(sub_read_nets)

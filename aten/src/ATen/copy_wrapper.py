@@ -159,10 +159,7 @@ def create_one_copy(dst_type, all_types):
     # for sparse.)
     checked_cast_dst = ''
     if dst_type['Density'] == 'Dense':
-        checked_cast_dst = \
-            'checked_tensor_unwrap(dst, "dst", 0, false, Backend::{}, ScalarType::{});' \
-            .format(dst_type['Backend'],
-                    dst_type['ScalarName'])
+        checked_cast_dst = f"""checked_tensor_unwrap(dst, "dst", 0, false, Backend::{dst_type['Backend']}, ScalarType::{dst_type['ScalarName']});"""
 
     env = nested_dict({
         'function_fallthrough': function_fallthrough,
@@ -211,9 +208,7 @@ def create_one_copy_from(src_type, all_types):
     # See Note [checked_cast_tensor is for dense only]
     checked_cast_src = ''
     if src_type['Density'] != 'Sparse':
-        checked_cast_src = \
-            'checked_tensor_unwrap(src, "src", 0, false, Backend::{}, ScalarType::{});' \
-            .format(src_type['Backend'], src_type['ScalarName'])
+        checked_cast_src = f"""checked_tensor_unwrap(src, "src", 0, false, Backend::{src_type['Backend']}, ScalarType::{src_type['ScalarName']});"""
 
     return FUNCTION_FROM.substitute(src_type, copy_body=copy_body, checked_cast_src=checked_cast_src)
 
@@ -235,8 +230,7 @@ def create(all_types, backend):
         # conversions), but CPU backend should only have CPU headers
         if backend == 'CPU' and the_type['DenseBackend'] != 'CPU':
             continue
-        top_env['copy_includes'].append(
-            '#include "ATen/{}.h"'.format(the_type['Type']))
+        top_env['copy_includes'].append(f"""#include "ATen/{the_type['Type']}.h\"""")
     top_env['copy_includes'].append(
         '#include "ATen/core/TensorImpl.h"')
 

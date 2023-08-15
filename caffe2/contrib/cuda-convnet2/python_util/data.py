@@ -31,7 +31,7 @@ class DataLoaderThread(Thread):
 class DataProvider:
     BATCH_REGEX = re.compile('^data_batch_(\d+)(\.\d+)?$')
     def __init__(self, data_dir, batch_range=None, init_epoch=1, init_batchnum=None, dp_params={}, test=False):
-        if batch_range == None:
+        if batch_range is None:
             batch_range = DataProvider.get_batch_nums(data_dir)
         if init_batchnum is None or init_batchnum not in batch_range:
             init_batchnum = batch_range[0]
@@ -60,13 +60,13 @@ class DataProvider:
             sub_batches = sorted(os.listdir(fname), key=alphanum_key)
             #print sub_batches
             num_sub_batches = len(sub_batches)
-            tgts = [[] for i in xrange(num_sub_batches)]
+            tgts = [[] for _ in xrange(num_sub_batches)]
             threads = [DataLoaderThread(os.path.join(fname, s), tgt) for (s, tgt) in zip(sub_batches, tgts)]
             for thread in threads:
                 thread.start()
             for thread in threads:
                 thread.join()
-            
+
             return [t[0] for t in tgts]
         return unpickle(self.get_data_file_name(batch_num))
     
@@ -99,20 +99,20 @@ class DataProvider:
         if type.startswith("dummy-"):
             name = "-".join(type.split('-')[:-1]) + "-n"
             if name not in dp_types:
-                raise DataProviderException("No such data provider: %s" % type)
+                raise DataProviderException(f"No such data provider: {type}")
             _class = dp_classes[name]
             dims = int(type.split('-')[-1])
             return _class(dims)
         elif type in dp_types:
             _class = dp_classes[type]
             return _class(data_dir, batch_range, init_epoch, init_batchnum, dp_params, test)
-        
-        raise DataProviderException("No such data provider: %s" % type)
+
+        raise DataProviderException(f"No such data provider: {type}")
     
     @classmethod
     def register_data_provider(cls, name, desc, _class):
         if name in dp_types:
-            raise DataProviderException("Data provider %s already registered" % name)
+            raise DataProviderException(f"Data provider {name} already registered")
         dp_types[name] = desc
         dp_classes[name] = _class
         
@@ -127,7 +127,9 @@ class DataProvider:
     @staticmethod
     def get_batch_nums(srcdir):
         names = DataProvider.get_batch_filenames(srcdir)
-        return sorted(list(set(int(DataProvider.BATCH_REGEX.match(n).group(1)) for n in names)))
+        return sorted(
+            list({int(DataProvider.BATCH_REGEX.match(n).group(1)) for n in names})
+        )
         
     @staticmethod
     def get_num_batches(srcdir):

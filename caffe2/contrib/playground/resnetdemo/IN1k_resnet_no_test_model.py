@@ -51,8 +51,8 @@ def fun_per_iter_b4RunNet(self, epoch, epoch_iter):
             caffe2_pb2.CPU
         with core.DeviceScope(core.DeviceOption(caffe2_pb2_device, idx)):
             workspace.FeedBlob(
-                '{}_{}/lr'.format(self.opts['distributed']['device'], idx),
-                np.array(learning_rate, dtype=np.float32)
+                f"{self.opts['distributed']['device']}_{idx}/lr",
+                np.array(learning_rate, dtype=np.float32),
             )
 
 

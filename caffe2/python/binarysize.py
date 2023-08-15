@@ -86,10 +86,7 @@ def GetSymbolTrie(target, nm_command, max_depth):
 def MaybeAddColor(s, color):
     """Wrap the input string to the xterm green color, if color is set.
     """
-    if color:
-        return '\033[92m{0}\033[0m'.format(s)
-    else:
-        return s
+    return '\033[92m{0}\033[0m'.format(s) if color else s
 
 
 def ReadableSize(num):
@@ -128,8 +125,7 @@ def PrintTrie(trie, prefix, max_depth, min_size, color):
             (k, trie.dictionary[k].size) for k in trie.dictionary.keys()]
         keys_with_sizes.sort(key=lambda x: x[1])
         for k, _ in keys_with_sizes[::-1]:
-            PrintTrie(
-                trie.dictionary[k], prefix + ' |', max_depth, min_size, color)
+            PrintTrie(trie.dictionary[k], f'{prefix} |', max_depth, min_size, color)
 
 
 def main(argv):

@@ -195,7 +195,7 @@ class NNPackOpsTest(hu.HypothesisTestCase):
         order = "NCHW"
         times = {}
         for engine in ["", "NNPACK"]:
-            net = core.Net(engine + "_test")
+            net = core.Net(f"{engine}_test")
             net.Conv(
                 ["X", "W", "b"], "Y",
                 order=order,
@@ -223,7 +223,7 @@ class NNPackOpsTest(hu.HypothesisTestCase):
             batch_size, input_channels, size, size).astype(np.float32) - 0.5
         times = {}
         for engine in ["", "NNPACK"]:
-            net = core.Net(engine + "_test")
+            net = core.Net(f"{engine}_test")
             net.Relu(
                 ["X"],
                 ["Y"],

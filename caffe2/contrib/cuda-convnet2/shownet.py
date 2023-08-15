@@ -59,7 +59,9 @@ class ShowConvNet(ConvNet):
 
     def plot_cost(self):
         if self.show_cost not in self.train_outputs[0][0]:
-            raise ShowNetError("Cost function with name '%s' not defined by given convnet." % self.show_cost)
+            raise ShowNetError(
+                f"Cost function with name '{self.show_cost}' not defined by given convnet."
+            )
 #        print self.test_outputs
         train_errors = [eval(self.layers[self.show_cost]['outputFilter'])(o[0][self.show_cost], o[1])[self.cost_idx] for o in self.train_outputs]
         test_errors = [eval(self.layers[self.show_cost]['outputFilter'])(o[0][self.show_cost], o[1])[self.cost_idx] for o in self.test_outputs]
@@ -79,8 +81,8 @@ class ShowConvNet(ConvNet):
         pl.plot(x, test_errors, 'r-', label='Test set')
         pl.legend()
         ticklocs = range(numbatches, len(train_errors) - len(train_errors) % numbatches + 1, numbatches)
-        epoch_label_gran = int(ceil(numepochs / 20.)) 
-        epoch_label_gran = int(ceil(float(epoch_label_gran) / 10) * 10) if numepochs >= 10 else epoch_label_gran 
+        epoch_label_gran = int(ceil(numepochs / 20.))
+        epoch_label_gran = int(ceil(float(epoch_label_gran) / 10) * 10) if numepochs >= 10 else epoch_label_gran
         ticklabels = map(lambda x: str((x[1] / numbatches)) if x[0] % epoch_label_gran == epoch_label_gran-1 else '', enumerate(ticklocs))
 
         pl.xticks(ticklocs, ticklabels)
@@ -133,7 +135,9 @@ class ShowConvNet(ConvNet):
         FILTERS_PER_ROW = 16
         filter_start = 0 # First filter to show
         if self.show_filters not in self.layers:
-            raise ShowNetError("Layer with name '%s' not defined by given convnet." % self.show_filters)
+            raise ShowNetError(
+                f"Layer with name '{self.show_filters}' not defined by given convnet."
+            )
         layer = self.layers[self.show_filters]
         filters = layer['weights'][self.input_idx]
 #        filters = filters - filters.min()
@@ -155,8 +159,8 @@ class ShowConvNet(ConvNet):
                 FILTERS_PER_ROW = layer['modulesX']
             else:
                 filters = filters.reshape(channels, filters.shape[0]/channels, filters.shape[1])
-        
-        
+
+
         # Convert YUV filters to RGB
         if self.yuv_to_rgb and channels == 3:
             R = filters[0,:,:] + 1.28033 * filters[2,:,:]
@@ -164,7 +168,7 @@ class ShowConvNet(ConvNet):
             B = filters[0,:,:] + 2.12798 * filters[1,:,:]
             filters[0,:,:], filters[1,:,:], filters[2,:,:] = R, G, B
         combine_chans = not self.no_rgb and channels == 3
-        
+
         # Make sure you don't modify the backing array itself here -- so no -= or /=
         if self.norm_filters:
             #print filters.shape
@@ -176,7 +180,15 @@ class ShowConvNet(ConvNet):
         filters = filters - filters.min()
         filters = filters / filters.max()
 
-        self.make_filter_fig(filters, filter_start, 2, 'Layer %s' % self.show_filters, num_filters, combine_chans, FILTERS_PER_ROW=FILTERS_PER_ROW)
+        self.make_filter_fig(
+            filters,
+            filter_start,
+            2,
+            f'Layer {self.show_filters}',
+            num_filters,
+            combine_chans,
+            FILTERS_PER_ROW=FILTERS_PER_ROW,
+        )
     
     def plot_predictions(self):
         epoch, batch, data = self.get_next_batch(train=False) # get a test batch

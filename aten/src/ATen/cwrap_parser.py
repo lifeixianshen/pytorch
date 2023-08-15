@@ -8,7 +8,7 @@ def parse(filename):
         declaration_lines = []
         declarations = []
         in_declaration = False
-        for line in file.readlines():
+        for line in file:
             line = line.rstrip()
             if line == '[[':
                 declaration_lines = []

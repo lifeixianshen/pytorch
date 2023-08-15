@@ -12,9 +12,9 @@ def fun_conclude_operator(self):
 
 
 def assembleAllOutputs(self):
-    output = {}
-    output['train_model'] = self.train_model
-    output['test_model'] = self.test_model
-    output['model'] = self.model_output
-    output['metrics'] = self.metrics_output
-    return output
+    return {
+        'train_model': self.train_model,
+        'test_model': self.test_model,
+        'model': self.model_output,
+        'metrics': self.metrics_output,
+    }

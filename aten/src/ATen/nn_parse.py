@@ -27,10 +27,9 @@ def argument_to_declaration(param, func=None):
     elif arg['type'] == 'Generator*':
         arg['type'] = 'THGenerator*'
 
-    match = re.match(r'IntList\[(\d+)\]', arg['type'])
-    if match:
+    if match := re.match(r'IntList\[(\d+)\]', arg['type']):
         arg['type'] = 'IntList'
-        arg['size'] = int(match.group(1))
+        arg['size'] = int(match[1])
 
     if '=' in name:
         name, default = name.split('=')
@@ -68,10 +67,11 @@ def output_arguments(thnn_function):
             return True
         if name in {'gradInput', 'gradWeight', 'gradBias', 'gradGrid'}:
             return True
-        if arg_name == 'indices' and 'updateOutput' in cname and 'Unpool' not in cname:
-            # indices is an output argument in pooling and an input in unpooling
-            return True
-        return False
+        return (
+            arg_name == 'indices'
+            and 'updateOutput' in cname
+            and 'Unpool' not in cname
+        )
 
     for arg in thnn_function.arguments:
         name = arg.name
@@ -89,7 +89,7 @@ def output_arguments(thnn_function):
 
 def get_return(args):
     indices = [str(idx) for idx, arg in enumerate(args) if arg.get('output')]
-    return 'argument {}'.format(','.join(indices))
+    return f"argument {','.join(indices)}"
 
 
 ARGUMENT_MAPPINGS = {
@@ -148,7 +148,7 @@ def get_thnn_args(thnn_function, params, inplace):
             raise RuntimeError('missing arg "{}" in {}'.format(name, thnn_function.name))
         param = params_by_name[name]
         if param['type'] == 'IntList' and 'size' in param:
-            name = name + '_'
+            name = f'{name}_'
         index = DIMENSION_OFFSET[suffix]
         if index < 0:
             index += param['size']
@@ -175,7 +175,7 @@ def get_thnn_args(thnn_function, params, inplace):
         elif name[-1] in DIMENSION_OFFSET and name[:-1] in ARGUMENT_MAPPINGS:
             # e.g kW, kH
             thnn_args.append(arg_expr(name[:-1], name[-1]))
-        elif name == 'owidth' or name == 'oheight':
+        elif name in ['owidth', 'oheight']:
             thnn_args.append(arg_expr(name[0], name[1:]))
         elif name == 'scale':
             thnn_args.append({'type': 'EXPRESSION', 'name': '1'})
@@ -194,7 +194,8 @@ def remove_unused_args(args, thnn_args):
         if name.endswith('_'):
             name = name[:-1]
         return name
-    uses = set([clean_name(arg['name']) for arg in thnn_args])
+
+    uses = {clean_name(arg['name']) for arg in thnn_args}
     uses.add('output_mask')
     args = [arg for arg in args if arg['name'] in uses]
     for arg in args:
@@ -245,14 +246,16 @@ def base_declaration(func, thnn_function, backends, inplace=False):
     arguments = [argument_to_declaration(a, func) for a in params]
     if not inplace:
         arguments += output_arguments(thnn_function)
-    buffers = [argument_to_declaration('Tensor ' + buf)
-               for buf in func.get('buffers', [])]
+    buffers = [
+        argument_to_declaration(f'Tensor {buf}')
+        for buf in func.get('buffers', [])
+    ]
 
     return function_info(name, arguments, None, buffers, backends, inplace, func.get('scalar_check'))
 
 
 def forward_declaration(base, thnn_function, inplace=False):
-    name = '{}_forward'.format(base['name'])
+    name = f"{base['name']}_forward"
     if inplace:
         name += '_'
 
@@ -289,7 +292,7 @@ def backward_declaration(base, thnn_functions):
     if 'upsample' in base['name']:
         # Add input_size as parameter to upsample backwards functions
         # Note that input_size is 4-dim for upsample_xxx2d
-        size = 2 + int(re.search(r'(\d+)d', base['name']).group(1))
+        size = 2 + int(re.search(r'(\d+)d', base['name'])[1])
         input_size_arg = {'type': 'IntList', 'name': 'input_size', 'size': size}
         for output_size_idx, arg in enumerate(arguments):
             if arg['name'] == 'output_size':
@@ -336,7 +339,7 @@ def backward_declaration(base, thnn_functions):
         if '_updateGradInput' in func.name:
             return 'grad_input_'
         if '_accGradParameters' in func.name:
-            return ' || '.join(p + '_' for p in grad_params)
+            return ' || '.join(f'{p}_' for p in grad_params)
         return None
 
     for func, args in zip(thnn_functions, thnn_args):
@@ -346,16 +349,18 @@ def backward_declaration(base, thnn_functions):
         cimpls.append(cimpl)
 
     output_args = [arg for arg in arguments if arg.get('output', False)]
-    scalar_check_arg = base['scalar_check'] if base['scalar_check'] is not None else dict()
+    scalar_check_arg = (
+        base['scalar_check'] if base['scalar_check'] is not None else {}
+    )
     scalar_check = {k: v for (k, v) in scalar_check_arg.items() if k in [a['name'] for a in output_args]}
     for arg in output_args:
         # resize automatically sets scalar_check
-        if scalar_check.get(arg['name']) is not None or arg.get('resize', False):
-            pass
-        else:
+        if scalar_check.get(arg['name']) is None and not arg.get(
+            'resize', False
+        ):
             base_name = arg['name'][len('grad_'):] if arg['name'] != 'grad_input' else 'self'
             if base_name in [a['name'] for a in arguments]:
-                scalar_check[arg['name']] = base_name + '_->dim() == 0'
+                scalar_check[arg['name']] = f'{base_name}_->dim() == 0'
             else:
                 raise ValueError(("Could not infer scalar_check for {} argument of func {} because {} "
                                   "does not exist.  Please explicitly specify scalar_check."
@@ -395,21 +400,27 @@ def run(paths):
     for path in yamls:
         for func in parse_nn_yaml(path):
             cname = func['cname']
-            backends = function_backends[cname + '_updateOutput']
+            backends = function_backends[f'{cname}_updateOutput']
 
-            fwd_function = header_functions[cname + '_updateOutput']
-            bwd_functions = []
-            for suffix in bwd_suffixes:
-                if cname + suffix in header_functions:
-                    bwd_functions.append(header_functions[cname + suffix])
-
+            fwd_function = header_functions[f'{cname}_updateOutput']
+            bwd_functions = [
+                header_functions[cname + suffix]
+                for suffix in bwd_suffixes
+                if cname + suffix in header_functions
+            ]
             base = base_declaration(func, fwd_function, backends)
-            declarations.append(base)
-            declarations.append(forward_declaration(base, fwd_function))
-            declarations.append(backward_declaration(base, bwd_functions))
-
+            declarations.extend(
+                (
+                    base,
+                    forward_declaration(base, fwd_function),
+                    backward_declaration(base, bwd_functions),
+                )
+            )
             if func.get('has_inplace', False):
-                declarations.append(base_declaration(func, fwd_function, backends, True))
-                declarations.append(forward_declaration(base, fwd_function, True))
-
+                declarations.extend(
+                    (
+                        base_declaration(func, fwd_function, backends, True),
+                        forward_declaration(base, fwd_function, True),
+                    )
+                )
     return declarations

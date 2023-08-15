@@ -23,10 +23,7 @@ def parse_kwarg(kwarg_str):
 
 
 def main(args):
-    # User defined keyword arguments
-    kwargs = {"order": "NCHW", "use_cudnn": False}
-    kwargs.update(dict(args.kwargs))
-
+    kwargs = {"order": "NCHW", "use_cudnn": False} | args.kwargs
     model = ModelHelper(name=args.benchmark_name)
 
     op_type = args.operator  # assumes a brew type op name

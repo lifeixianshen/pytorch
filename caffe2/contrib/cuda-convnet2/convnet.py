@@ -67,8 +67,13 @@ class MultiviewTestDriver(TrainingDriver):
         if self.write_output:
             if not os.path.exists(self.convnet.test_out):
                 os.makedirs(self.convnet.test_out)
-            pickle(self.test_file_name,  {'data': self.probs,
-                                          'note': 'generated from %s' % self.convnet.save_file})
+            pickle(
+                self.test_file_name,
+                {
+                    'data': self.probs,
+                    'note': f'generated from {self.convnet.save_file}',
+                },
+            )
 
 class FeatureWriterDriver(Driver):
     def __init__(self, convnet):
@@ -140,18 +145,20 @@ class ConvNet(IGPUModel):
     
     def do_unshare_weights(self):
         # Decouple weight matrices
-        if len(self.op.get_value('unshare_weights')) > 0:
-            for name_str in self.op.get_value('unshare_weights'):
-                if name_str:
-                    name = lay.WeightLayerParser.get_layer_name(name_str)
-                    if name is not None:
-                        name, idx = name[0], name[1]
-                        if name not in self.model_state['layers']:
-                            raise ModelStateException("Layer '%s' does not exist; unable to unshare" % name)
-                        layer = self.model_state['layers'][name]
-                        lay.WeightLayerParser.unshare_weights(layer, self.model_state['layers'], matrix_idx=idx)
-                    else:
-                        raise ModelStateException("Invalid layer name '%s'; unable to unshare." % name_str)
+        if len(self.op.get_value('unshare_weights')) <= 0:
+            return
+        for name_str in self.op.get_value('unshare_weights'):
+            if name_str:
+                name = lay.WeightLayerParser.get_layer_name(name_str)
+                if name is None:
+                    raise ModelStateException(
+                        f"Invalid layer name '{name_str}'; unable to unshare."
+                    )
+                name, idx = name[0], name[1]
+                if name not in self.model_state['layers']:
+                    raise ModelStateException(f"Layer '{name}' does not exist; unable to unshare")
+                layer = self.model_state['layers'][name]
+                lay.WeightLayerParser.unshare_weights(layer, self.model_state['layers'], matrix_idx=idx)
     
     def set_driver(self):
         if self.op.get_value('check_grads'):

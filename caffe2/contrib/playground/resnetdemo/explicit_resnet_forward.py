@@ -42,7 +42,7 @@ def resnet_imagenet_create_model(model, data, labels, split, opts, dataset):
     model_helper = ResNetModelHelper(model, split, opts)
     opts_depth = opts['model_param']['num_layer']
     engine = opts['model_param']['engine']
-    log.info(' | ResNet-{} Imagenet'.format(opts_depth))
+    log.info(f' | ResNet-{opts_depth} Imagenet')
     assert opts_depth in BLOCK_CONFIG.keys(), \
         'Block config is not defined for specified model depth. Please check.'
     (n1, n2, n3, n4) = BLOCK_CONFIG[opts_depth]
@@ -58,9 +58,7 @@ def resnet_imagenet_create_model(model, data, labels, split, opts, dataset):
         data, 'conv1', 3, 64, 7, stride=2, pad=3, weight_init=('MSRAFill', {}),
         bias_init=('ConstantFill', {'value': 0.}), no_bias=0, engine=engine
     )
-    test_mode = False
-    if split in ['test', 'val']:
-        test_mode = True
+    test_mode = split in ['test', 'val']
     bn_blob = model.SpatialBN(
         conv_blob, 'res_conv1_bn', 64,
         # does not appear to affect test_loss performance
@@ -151,18 +149,15 @@ class ResNetModelHelper():
             weight_init=("MSRAFill", {}),
             bias_init=('ConstantFill', {'value': 0.}), no_bias=1, engine=self.engine
         )
-        test_mode = False
-        if self.split in ['test', 'val']:
-            test_mode = True
-        bn_blob = self.model.SpatialBN(
-            conv_blob, prefix + "_bn", dim_out,
-            # epsilon=1e-3,
-            # momentum=0.1,
+        test_mode = self.split in ['test', 'val']
+        return self.model.SpatialBN(
+            conv_blob,
+            f"{prefix}_bn",
+            dim_out,
             epsilon=self.opts['model_param']['bn_epsilon'],
             momentum=self.opts['model_param']['bn_momentum'],
             is_test=test_mode,
         )
-        return bn_blob
 
     def conv_bn(
         self, blob_in, dim_in, dim_out, kernel, stride, prefix, group=1, pad=1,
@@ -173,16 +168,15 @@ class ResNetModelHelper():
             weight_init=("MSRAFill", {}),
             bias_init=('ConstantFill', {'value': 0.}), no_bias=1, engine=self.engine
         )
-        test_mode = False
-        if self.split in ['test', 'val']:
-            test_mode = True
-        bn_blob = self.model.SpatialBN(
-            conv_blob, prefix + "_bn", dim_out,
+        test_mode = self.split in ['test', 'val']
+        return self.model.SpatialBN(
+            conv_blob,
+            f"{prefix}_bn",
+            dim_out,
             epsilon=self.opts['model_param']['bn_epsilon'],
             momentum=self.opts['model_param']['bn_momentum'],
             is_test=test_mode,
         )
-        return bn_blob
 
     def conv_bn_relu(
         self, blob_in, dim_in, dim_out, kernel, stride, prefix, pad=1, group=1,
@@ -198,36 +192,48 @@ class ResNetModelHelper():
         self, blob_in, dim_in, dim_out, stride, prefix, dim_inner, group
     ):
         blob_out = self.conv_bn_relu(
-            blob_in, dim_in, dim_inner, 1, 1, prefix + "_branch2a", pad=0,
+            blob_in, dim_in, dim_inner, 1, 1, f"{prefix}_branch2a", pad=0
         )
 
         conv_blob = self.model.GroupConv_Deprecated(
-            blob_out, prefix + "_branch2b", dim_inner, dim_inner, kernel=3,
-            stride=stride, pad=1, group=group, weight_init=("MSRAFill", {}),
-            bias_init=('ConstantFill', {'value': 0.}), no_bias=1, engine=self.engine
+            blob_out,
+            f"{prefix}_branch2b",
+            dim_inner,
+            dim_inner,
+            kernel=3,
+            stride=stride,
+            pad=1,
+            group=group,
+            weight_init=("MSRAFill", {}),
+            bias_init=('ConstantFill', {'value': 0.0}),
+            no_bias=1,
+            engine=self.engine,
         )
-        test_mode = False
-        if self.split in ['test', 'val']:
-            test_mode = True
+        test_mode = self.split in ['test', 'val']
         bn_blob = self.model.SpatialBN(
-            conv_blob, prefix + "_branch2b_bn", dim_out,
+            conv_blob,
+            f"{prefix}_branch2b_bn",
+            dim_out,
             epsilon=self.opts['model_param']['bn_epsilon'],
-            momentum=self.opts['model_param']['bn_momentum'], is_test=test_mode,
+            momentum=self.opts['model_param']['bn_momentum'],
+            is_test=test_mode,
         )
         relu_blob = self.model.Relu(bn_blob, bn_blob)
 
         bn_blob = self.conv_bn(
-            relu_blob, dim_inner, dim_out, 1, 1, prefix + "_branch2c", pad=0
+            relu_blob, dim_inner, dim_out, 1, 1, f"{prefix}_branch2c", pad=0
         )
         if self.opts['model_param']['custom_bn_init']:
             self.model.param_init_net.ConstantFill(
-                [bn_blob + '_s'], bn_blob + '_s',
-                value=self.opts['model_param']['bn_init_gamma'])
+                [f'{bn_blob}_s'],
+                f'{bn_blob}_s',
+                value=self.opts['model_param']['bn_init_gamma'],
+            )
 
         sc_blob = self.add_shortcut(
-            blob_in, dim_in, dim_out, stride, prefix=prefix + "_branch1"
+            blob_in, dim_in, dim_out, stride, prefix=f"{prefix}_branch1"
         )
-        sum_blob = self.model.net.Sum([bn_blob, sc_blob], prefix + "_sum")
+        sum_blob = self.model.net.Sum([bn_blob, sc_blob], f"{prefix}_sum")
         return self.model.Relu(sum_blob, sum_blob)
 
     # 3(c) this block uses cudnn group conv op
@@ -235,24 +241,31 @@ class ResNetModelHelper():
         self, blob_in, dim_in, dim_out, stride, prefix, dim_inner, group
     ):
         blob_out = self.conv_bn_relu(
-            blob_in, dim_in, dim_inner, 1, 1, prefix + "_branch2a", pad=0,
+            blob_in, dim_in, dim_inner, 1, 1, f"{prefix}_branch2a", pad=0
         )
         blob_out = self.conv_bn_relu(
-            blob_out, dim_inner, dim_inner, 3, stride, prefix + "_branch2b",
-            group=group
+            blob_out,
+            dim_inner,
+            dim_inner,
+            3,
+            stride,
+            f"{prefix}_branch2b",
+            group=group,
         )
         bn_blob = self.conv_bn(
-            blob_out, dim_inner, dim_out, 1, 1, prefix + "_branch2c", pad=0
+            blob_out, dim_inner, dim_out, 1, 1, f"{prefix}_branch2c", pad=0
         )
         if self.opts['model_param']['custom_bn_init']:
             self.model.param_init_net.ConstantFill(
-                [bn_blob + '_s'], bn_blob + '_s',
-                value=self.opts['model_param']['bn_init_gamma'])
+                [f'{bn_blob}_s'],
+                f'{bn_blob}_s',
+                value=self.opts['model_param']['bn_init_gamma'],
+            )
 
         sc_blob = self.add_shortcut(
-            blob_in, dim_in, dim_out, stride, prefix=prefix + "_branch1"
+            blob_in, dim_in, dim_out, stride, prefix=f"{prefix}_branch1"
         )
-        sum_blob = self.model.net.Sum([bn_blob, sc_blob], prefix + "_sum")
+        sum_blob = self.model.net.Sum([bn_blob, sc_blob], f"{prefix}_sum")
         return self.model.Relu(sum_blob, sum_blob)
 
     # bottleneck residual layer for 50, 101, 152 layer networks
@@ -260,23 +273,25 @@ class ResNetModelHelper():
         self, blob_in, dim_in, dim_out, stride, prefix, dim_inner, group=None
     ):
         blob_out = self.conv_bn_relu(
-            blob_in, dim_in, dim_inner, 1, 1, prefix + "_branch2a", pad=0,
+            blob_in, dim_in, dim_inner, 1, 1, f"{prefix}_branch2a", pad=0
         )
         blob_out = self.conv_bn_relu(
-            blob_out, dim_inner, dim_inner, 3, stride, prefix + "_branch2b",
+            blob_out, dim_inner, dim_inner, 3, stride, f"{prefix}_branch2b"
         )
         bn_blob = self.conv_bn(
-            blob_out, dim_inner, dim_out, 1, 1, prefix + "_branch2c", pad=0
+            blob_out, dim_inner, dim_out, 1, 1, f"{prefix}_branch2c", pad=0
         )
         if self.opts['model_param']['custom_bn_init']:
             self.model.param_init_net.ConstantFill(
-                [bn_blob + '_s'], bn_blob + '_s',
-                value=self.opts['model_param']['bn_init_gamma'])
+                [f'{bn_blob}_s'],
+                f'{bn_blob}_s',
+                value=self.opts['model_param']['bn_init_gamma'],
+            )
 
         sc_blob = self.add_shortcut(
-            blob_in, dim_in, dim_out, stride, prefix=prefix + "_branch1"
+            blob_in, dim_in, dim_out, stride, prefix=f"{prefix}_branch1"
         )
-        sum_blob = self.model.net.Sum([bn_blob, sc_blob], prefix + "_sum")
+        sum_blob = self.model.net.Sum([bn_blob, sc_blob], f"{prefix}_sum")
         return self.model.Relu(sum_blob, sum_blob)
 
     # basic layer for the 18 and 34 layer networks and the CIFAR data netwrorks
@@ -285,15 +300,15 @@ class ResNetModelHelper():
         group=None,
     ):
         blob_out = self.conv_bn_relu(
-            blob_in, dim_in, dim_out, 3, stride, prefix + "_branch2a"
+            blob_in, dim_in, dim_out, 3, stride, f"{prefix}_branch2a"
         )
         bn_blob = self.conv_bn(
-            blob_out, dim_out, dim_out, 3, 1, prefix + "_branch2b", pad=1
+            blob_out, dim_out, dim_out, 3, 1, f"{prefix}_branch2b", pad=1
         )
         sc_blob = self.add_shortcut(
-            blob_in, dim_in, dim_out, stride, prefix=prefix + "_branch1"
+            blob_in, dim_in, dim_out, stride, prefix=f"{prefix}_branch1"
         )
-        sum_blob = self.model.net.Sum([bn_blob, sc_blob], prefix + "_sum")
+        sum_blob = self.model.net.Sum([bn_blob, sc_blob], f"{prefix}_sum")
         return self.model.Relu(sum_blob, sum_blob)
 
     def residual_layer(
@@ -303,7 +318,7 @@ class ResNetModelHelper():
         # prefix is something like: res2, res3, etc.
         # each res layer has num_blocks stacked
         for idx in range(num_blocks):
-            block_prefix = "{}_{}".format(prefix, idx)
+            block_prefix = f"{prefix}_{idx}"
             block_stride = 2 if (idx == 0 and stride == 2) else 1
             blob_in = block_fn(
                 blob_in, dim_in, dim_out, block_stride, block_prefix, dim_inner,

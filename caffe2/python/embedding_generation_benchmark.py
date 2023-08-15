@@ -23,7 +23,7 @@ def generate_data(T, batch_size, max_seq_length):
     '''
     Fill a queue with input data
     '''
-    log.info("Generating T={} batches".format(T))
+    log.info(f"Generating T={T} batches")
 
     generate_input_init_net = core.Net('generate_input_init')
     queue = generate_input_init_net.CreateBlobsQueue(
@@ -37,7 +37,7 @@ def generate_data(T, batch_size, max_seq_length):
 
     for t in range(T):
         if (t % (max(10, T // 10)) == 0):
-            log.info("Generating data {}/{}".format(t, T))
+            log.info(f"Generating data {t}/{T}")
         X = np.tile(np.arange(max_seq_length), [batch_size, 1]).transpose()
         workspace.FeedBlob("scratch", X)
         workspace.RunNetOnce(generate_input_net.Proto())
@@ -47,8 +47,9 @@ def generate_data(T, batch_size, max_seq_length):
 
 
 def generate_embedding_table(vocab_size, embedding_size):
-    log.info("Generating embedding table with dimensions {}"
-             .format([vocab_size, embedding_size]))
+    log.info(
+        f"Generating embedding table with dimensions {[vocab_size, embedding_size]}"
+    )
 
     generate_table_net = core.Net('generate_table')
     table = generate_table_net.GaussianFill(
@@ -85,13 +86,13 @@ def Caffe2EmbeddingGeneration(args):
 
     queue = generate_data(T, args.batch_size, args.seq_length)
 
-    embedding_table = None
     if args.implementation == 'table':
         embedding_table = generate_embedding_table(
             args.seq_length,
             args.embedding_size,
         )
-
+    else:
+        embedding_table = None
     model = create_model(args, queue, embedding_table, args.embedding_size)
 
     workspace.RunNetOnce(model.param_init_net)
@@ -115,20 +116,16 @@ def Caffe2EmbeddingGeneration(args):
 
         new_time = time.time()
         log.info(
-            "Iter: {} / {}. Embeddings Generated Per Second: {}k.".format(
-                iteration,
-                num_iters,
-                (iters_once * args.batch_size * args.seq_length) /
-                (new_time - last_time) // 100 / 10,
-            )
+            f"Iter: {iteration} / {num_iters}. Embeddings Generated Per Second: {iters_once * args.batch_size * args.seq_length / (new_time - last_time) // 100 / 10}k."
         )
         last_time = new_time
 
     total_per_sec = (num_iters - 1) * args.batch_size * args.seq_length
     total_per_sec = total_per_sec / (time.time() - start_time) // 100 / 10
 
-    log.info("Done. Total embeddings generated per second " +
-             "excluding 1st iteration: {}k".format(total_per_sec))
+    log.info(
+        f"Done. Total embeddings generated per second excluding 1st iteration: {total_per_sec}k"
+    )
 
     return time.time() - start_time
 

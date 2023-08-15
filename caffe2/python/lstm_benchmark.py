@@ -24,7 +24,7 @@ def generate_data(T, shape, num_labels, fixed_shape):
     '''
     Fill a queue with input data
     '''
-    log.info("Generating T={} sequence batches".format(T))
+    log.info(f"Generating T={T} sequence batches")
 
     generate_input_init_net = core.Net('generate_input_init')
     queue = generate_input_init_net.CreateBlobsQueue(
@@ -44,7 +44,7 @@ def generate_data(T, shape, num_labels, fixed_shape):
     entry_counts = []
     for t in range(T):
         if (t % (max(10, T // 10)) == 0):
-            print("Generating data {}/{}".format(t, T))
+            print(f"Generating data {t}/{T}")
         # Randomize the seqlength
         random_shape = (
             [np.random.randint(1, shape[0])] + shape[1:]
@@ -82,12 +82,11 @@ def create_model(args, queue, label_queue, input_shape):
             assert args.fixed_shape, \
                 "Random input length is not static RNN compatible"
             T = args.seq_length
-            print("Using static RNN of size {}".format(T))
+            print(f"Using static RNN of size {T}")
 
         for i in range(args.num_layers):
             hidden_init, cell_init = model.net.AddExternalInputs(
-                "hidden_init_{}".format(i),
-                "cell_init_{}".format(i)
+                f"hidden_init_{i}", f"cell_init_{i}"
             )
             init_blobs.extend([hidden_init, cell_init])
 
@@ -181,20 +180,19 @@ def Caffe2LSTM(args):
 
     start_time = time.time()
     num_iters = T // args.seq_length
-    total_iters = 0
-
     # Run the Benchmark
     log.info("------ Warming up ------")
     workspace.RunNet(model.net.Proto().name)
 
-    if (args.gpu):
+    if args.gpu:
         log.info("Memory stats:")
         stats = utils.GetGPUMemoryUsageStats()
-        log.info("GPU memory:\t{} MB".format(stats['max_total'] / 1024 / 1024))
+        log.info(f"GPU memory:\t{stats['max_total'] / 1024 / 1024} MB")
 
     log.info("------ Starting benchmark ------")
     start_time = time.time()
     last_time = time.time()
+    total_iters = 0
     for iteration in range(1, num_iters, args.iters_to_report):
         iters_once = min(args.iters_to_report, num_iters - iteration)
         total_iters += iters_once
@@ -202,28 +200,21 @@ def Caffe2LSTM(args):
 
         new_time = time.time()
         log.info(
-            "Iter: {} / {}. Entries Per Second: {}k.".format(
-                iteration,
-                num_iters,
-                np.sum(entry_counts[iteration:iteration + iters_once]) /
-                (new_time - last_time) // 100 / 10,
-            )
+            f"Iter: {iteration} / {num_iters}. Entries Per Second: {np.sum(entry_counts[iteration:iteration + iters_once]) / (new_time - last_time) // 100 / 10}k."
         )
         last_time = new_time
 
-    log.info("Done. Total EPS excluding 1st iteration: {}k {}".format(
-         np.sum(entry_counts[1:]) / (time.time() - start_time) // 100 / 10,
-         " (with RNN executor)" if args.rnn_executor else "",
-    ))
+    log.info(
+        f'Done. Total EPS excluding 1st iteration: {np.sum(entry_counts[1:]) / (time.time() - start_time) // 100 / 10}k {" (with RNN executor)" if args.rnn_executor else ""}'
+    )
 
-    if (args.gpu):
+    if args.gpu:
         log.info("Memory stats:")
         stats = utils.GetGPUMemoryUsageStats()
-        log.info("GPU memory:\t{} MB".format(stats['max_total'] / 1024 / 1024))
+        log.info(f"GPU memory:\t{stats['max_total'] / 1024 / 1024} MB")
         if (stats['max_total'] != stats['total']):
             log.warning(
-                "Max usage differs from current total usage: {} > {}".
-                format(stats['max_total'], stats['total'])
+                f"Max usage differs from current total usage: {stats['max_total']} > {stats['total']}"
             )
             log.warning("This means that costly deallocations occured.")
 
@@ -333,12 +324,18 @@ if __name__ == '__main__':
 
     rnn_executor_opt = 1 if args.rnn_executor else 0
 
-    workspace.GlobalInit([
-        'caffe2',
-        '--caffe2_log_level=0',
-        '--caffe2_print_blob_sizes_at_exit=0',
-        '--caffe2_rnn_executor={}'.format(rnn_executor_opt),
-        '--caffe2_gpu_memory_tracking=1'] + extra_args)
+    workspace.GlobalInit(
+        (
+            [
+                'caffe2',
+                '--caffe2_log_level=0',
+                '--caffe2_print_blob_sizes_at_exit=0',
+                f'--caffe2_rnn_executor={rnn_executor_opt}',
+                '--caffe2_gpu_memory_tracking=1',
+            ]
+            + extra_args
+        )
+    )
 
     device = core.DeviceOption(
         caffe2_pb2.CUDA if args.gpu else caffe2_pb2.CPU, 4)

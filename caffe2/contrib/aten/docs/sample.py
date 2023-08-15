@@ -14,11 +14,7 @@ class MyFunction(Function):
     @staticmethod
     def symbolic(graph, x, y):
         x2 = graph.at("mul", x, x)
-        r = graph.at("add", x2, y)
-        # x, y, x2, and r are 'Node' objects
-        # print(r) or print(graph) will print out a textual representation for debugging.
-        # this representation will be converted to ONNX protobufs on export.
-        return r
+        return graph.at("add", x2, y)
 
 class MyModule(nn.Module):
     def forward(self, x, y):

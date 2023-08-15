@@ -24,11 +24,7 @@ except ImportError:
         return Dict[Any, Any]
 
 import sys
-if sys.version_info[0] == 3:
-    string_type = str
-else:
-    string_type = basestring
-
+string_type = str if sys.version_info[0] == 3 else basestring
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #
 # what has to be done to add a Operation ...
@@ -369,9 +365,7 @@ class nested_dict(object):
 
     def __getitem__(self, x):
         r = self.base.get(x)
-        if r is not None:
-            return r
-        return self.parent[x]
+        return r if r is not None else self.parent[x]
 
 
 Environment = TypedDict('Environment', {
@@ -540,12 +534,15 @@ def device_guard(option, formals, is_factory_method, dispatch_options):
     # For factory methods the `DeviceGuard` is already in the template.
     if option.get('device_guard', True):
         if dispatch_options:
-            return 'const DeviceGuard device_guard({}.device());'.format(dispatch_options['name'])
+            return f"const DeviceGuard device_guard({dispatch_options['name']}.device());"
         if not is_factory_method:
-            tensor_arguments = [f for f in formals if f['dynamic_type'] in {'Tensor', 'TensorList'}]
-            if tensor_arguments:
+            if tensor_arguments := [
+                f
+                for f in formals
+                if f['dynamic_type'] in {'Tensor', 'TensorList'}
+            ]:
                 tensor_argument = tensor_arguments[0]['name']
-                return 'const DeviceGuard device_guard({});'.format(tensor_argument)
+                return f'const DeviceGuard device_guard({tensor_argument});'
     return '// DeviceGuard omitted'
 
 
@@ -566,8 +563,7 @@ def check_methods_do_not_start_with_underscore(name, is_method):
                 '_dimV', '_coalesced_'}:
         return
     if is_method and name.startswith('_') and not name.startswith('__') and not name.startswith('_th_'):
-        message = "Function '{}' starts with a single underscore and is ".format(name)
-        message += "configured to have a method on Tensor. Functions that start with "
+        message = f"Function '{name}' starts with a single underscore and is configured to have a method on Tensor. Functions that start with "
         message += " a single underscore should only be functions in the at:: "
         message += "namespace and not methods on Tensor!"
         raise RuntimeError(message)
@@ -578,9 +574,9 @@ def to_return_type(arg, option):
     t = arg['type']
     rt = TYPE_RETURN.get(t, t)
     if rt == 'Tensor' and not arg.get('allocate'):
-        rt = rt + ' &'
+        rt = f'{rt} &'
         if not is_mutable_formal_argument(arg, option):
-            rt = 'const ' + rt
+            rt = f'const {rt}'
     return {
         'name': arg['name'],
         'type': rt,
@@ -620,7 +616,7 @@ def create_generic(top_env, declarations):
         # type: (THFormal, FunctionOption) -> AtFormal
         type_str = TYPE_FORMAL_GENERIC.get(argument['type'], argument['type'])
         if type_str == 'Tensor &' and not is_mutable_formal_argument(argument, option):
-            type_str = 'const ' + type_str
+            type_str = f'const {type_str}'
         translated = {
             'name': argument['name'],
             'type': type_str,
@@ -775,7 +771,7 @@ def create_generic(top_env, declarations):
         # xxx_forward variant variant after creating any necessary buffers.
         actuals = option['actuals']
         base_name = option['name'][:-1] if option['inplace'] else option['name']
-        fwd_name = option['api_name'].replace(base_name, base_name + '_forward')
+        fwd_name = option['api_name'].replace(base_name, f'{base_name}_forward')
 
         if len(option['buffers']) == 0:
             return 'return {}({});'.format(fwd_name, ', '.join(actuals))
@@ -886,15 +882,20 @@ def create_generic(top_env, declarations):
             broadcast_dims = 'dims:' in broadcast_arg['broadcast']
             option['broadcast_actuals'] = get_broadcast_actuals(broadcast_arg, broadcast_inplace, broadcast_dims)
             if not broadcast_dims:
-                option['broadcast_returns'] = (["b_" + x for x in option['broadcast_actuals']
-                                               if x != broadcast_arg['name'] or not broadcast_inplace])
+                option['broadcast_returns'] = [
+                    f"b_{x}"
+                    for x in option['broadcast_actuals']
+                    if x != broadcast_arg['name'] or not broadcast_inplace
+                ]
             else:
                 option['broadcast_returns'] = ["b_" + broadcast_arg['name']]
 
             option['broadcast_function'] = 'expand_' + ('inplace' if broadcast_inplace
                                                         else 'size' if broadcast_dims else 'outplace')
-            option['broadcast_modified_actuals'] = ['b_' + y if 'b_' + y in option['broadcast_returns'] else y
-                                                    for y in option['actuals']]
+            option['broadcast_modified_actuals'] = [
+                f'b_{y}' if f'b_{y}' in option['broadcast_returns'] else y
+                for y in option['actuals']
+            ]
             top_env['type_method_definitions'].append(
                 TYPE_METHOD_DEFINITION_BROADCAST.substitute(env))
 

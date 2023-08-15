@@ -20,12 +20,16 @@ class ComputeLoss(Meter.Meter):
 
     def Add(self):
         """Average values of a blob on each gpu"""
-        value = 0
-        for idx in range(self.opts['distributed']['first_xpu_id'],
-                         self.opts['distributed']['first_xpu_id'] +
-                         self.opts['distributed']['num_xpus']):
-            value += workspace.FetchBlob('{}_{}/{}'.
-                format(self.opts['distributed']['device'], idx, self.blob_name))
+        value = sum(
+            workspace.FetchBlob(
+                f"{self.opts['distributed']['device']}_{idx}/{self.blob_name}"
+            )
+            for idx in range(
+                self.opts['distributed']['first_xpu_id'],
+                self.opts['distributed']['first_xpu_id']
+                + self.opts['distributed']['num_xpus'],
+            )
+        )
         self.value += value
         self.iter += 1
 

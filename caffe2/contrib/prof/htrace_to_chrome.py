@@ -115,7 +115,7 @@ def generate_chrome_trace(root_list, display):
                     continue
 
                 m = re.search("(?<=worker-scope-)\d+", v["desc"])
-                wid = m.group(0)
+                wid = m[0]
                 c["tid"] = wid
                 ct.append(c)
 
@@ -191,9 +191,9 @@ def main():
         trace_dic, root_list = build_trace_dict(f, args.start_time, args.end_time)
 
     ct = generate_chrome_trace(root_list, args.display)
-    print("Writing chrome json file to %s.json" % args.htrace_log)
-    print("Now import %s.json in chrome://tracing" % args.htrace_log)
-    with open(args.htrace_log + ".json", "w") as f:
+    print(f"Writing chrome json file to {args.htrace_log}.json")
+    print(f"Now import {args.htrace_log}.json in chrome://tracing")
+    with open(f"{args.htrace_log}.json", "w") as f:
         f.write(json.dumps(ct))
 
 

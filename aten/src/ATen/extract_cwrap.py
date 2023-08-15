@@ -23,7 +23,7 @@ declaration_lines = []
 for filename in files:
     with open(filename, 'r') as file:
         in_declaration = False
-        for line in file.readlines():
+        for line in file:
             line = line.rstrip()
             if line == '[[':
                 in_declaration = True

@@ -58,10 +58,7 @@ def filter_unique_options(options, allow_kwarg, type_to_signature, remove_self):
         return exclude_arg(arg) or (remove_self and arg['name'] == 'self')
 
     def signature(option, kwarg_only_count):
-        if kwarg_only_count == 0:
-            kwarg_only_count = None
-        else:
-            kwarg_only_count = -kwarg_only_count
+        kwarg_only_count = None if kwarg_only_count == 0 else -kwarg_only_count
         arg_signature = '#'.join(
             type_to_signature.get(arg['type'], arg['type'])
             for arg in option['arguments'][:kwarg_only_count]
@@ -72,7 +69,8 @@ def filter_unique_options(options, allow_kwarg, type_to_signature, remove_self):
             arg['name'] + '#' + arg['type']
             for arg in option['arguments'][kwarg_only_count:]
             if not exclude_arg(arg))
-        return arg_signature + "#-#" + kwarg_only_signature
+        return f"{arg_signature}#-#{kwarg_only_signature}"
+
     seen_signatures = set()
     unique = []
     for option in options:
@@ -141,7 +139,11 @@ class Function(object):
         self.arguments.append(arg)
 
     def __repr__(self):
-        return self.name + '(' + ', '.join(map(lambda a: a.__repr__(), self.arguments)) + ')'
+        return (
+            f'{self.name}('
+            + ', '.join(map(lambda a: a.__repr__(), self.arguments))
+            + ')'
+        )
 
 
 class Argument(object):
@@ -152,7 +154,7 @@ class Argument(object):
         self.is_optional = is_optional
 
     def __repr__(self):
-        return self.type + ' ' + self.name
+        return f'{self.type} {self.name}'
 
 
 def parse_header(path):
@@ -172,8 +174,7 @@ def parse_header(path):
     # Flatten lines
     new_lines = []
     for l, c in lines:
-        for split in l:
-            new_lines.append((split, c))
+        new_lines.extend((split, c) for split in l)
     lines = new_lines
     del new_lines
     # Remove unnecessary whitespace
@@ -199,7 +200,7 @@ def parse_header(path):
         elif l:
             t, name = l.split()
             if '*' in name:
-                t = t + '*'
+                t = f'{t}*'
                 name = name[1:]
             generic_functions[-1].add_argument(
                 Argument(t, name, '[OPTIONAL]' in c))

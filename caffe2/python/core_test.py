@@ -274,12 +274,7 @@ class TestCreateOperator(test_util.TestCase):
         self.assertEqual(op.device_option.device_id, 1)
         self.assertTrue(len(op.arg), 3)
 
-        # can't guarantee ordering of kwargs, so generate a set of args
-        # to test with
-        arg_map = {}
-        for arg in op.arg:
-            arg_map[arg.name] = arg
-
+        arg_map = {arg.name: arg for arg in op.arg}
         # Check all elements exist that should
         self.assertEqual("arg1" in arg_map, True)
         self.assertEqual("arg2" in arg_map, True)
@@ -433,14 +428,17 @@ class TestExtractPredictorNet(test_util.TestCase):
         # Check export blobs
         self.assertTrue("image" not in export_blobs)
         self.assertTrue("xx/data" not in export_blobs)
-        self.assertEqual(set([str(p) for p in model.params]), export_blobs)
+        self.assertEqual({str(p) for p in model.params}, export_blobs)
 
         # Check external inputs/outputs
         self.assertTrue("image" in predict_net.Proto().external_input)
-        self.assertEquals(set(["pred"]), set(predict_net.Proto().external_output))
+        self.assertEquals({"pred"}, set(predict_net.Proto().external_output))
         self.assertEqual(
-            set(predict_net.Proto().external_input) -
-            set([str(p) for p in model.params]), set(["image"])
+            (
+                set(predict_net.Proto().external_input)
+                - {str(p) for p in model.params}
+            ),
+            {"image"},
         )
 
 
@@ -448,8 +446,7 @@ class TestOperatorTraceback(test_util.TestCase):
     def op_name_check(self, net, cf, line, func):
         net.PopulateProtoWithFileName()
         filename = getframeinfo(cf).filename
-        self.assertEqual(net.Proto().op[0].name, '{}:{}:{}'.format(
-            filename, line, func))
+        self.assertEqual(net.Proto().op[0].name, f'{filename}:{line}:{func}')
 
     def test_operator_constructor_traceback(self):
         net = core.Net("test")
@@ -669,18 +666,18 @@ class TestInferDevice(test_util.TestCase):
             op = core.CreateOperator(op_name, inputs, outputs)
         input_dev, output_dev = core.InferOpBlobDevices(op)
         if isinstance(in_option, list):
-            assert len(in_option) == len(input_dev), \
-                'Length of input device option should match' \
-                '{} vs. {}'.format(in_option, input_dev)
+            assert len(in_option) == len(
+                input_dev
+            ), f'Length of input device option should match{in_option} vs. {input_dev}'
             for in_dev, in_opt in zip(input_dev, in_option):
                 self.assertEqual(in_dev, in_opt)
         else:
             for in_dev in input_dev:
                 self.assertEqual(in_dev, in_option)
         if isinstance(out_option, list):
-            assert len(out_option) == len(output_dev), \
-                'Length of output device option should match' \
-                '{} vs. {}'.format(out_option, output_dev)
+            assert len(out_option) == len(
+                output_dev
+            ), f'Length of output device option should match{out_option} vs. {output_dev}'
             for out_dev, out_opt in zip(output_dev, out_option):
                 self.assertEqual(out_dev, out_opt)
         else:
@@ -724,9 +721,10 @@ class TestInferDevice(test_util.TestCase):
         with core.DeviceScope(op_option):
             op = core.CreateOperator(
                 'Concat',
-                ['X_{}'.format(i) for i in range(4)],
+                [f'X_{i}' for i in range(4)],
                 ['concat_result', 'split_info'],
-                axis=1)
+                axis=1,
+            )
         input_dev, output_dev = core.InferOpBlobDevices(op)
         # 2nd output's type is CPU irrespective of Concat op's device option.
         self.assertEqual(output_dev[1], self.cpu_option)
@@ -735,10 +733,8 @@ class TestInferDevice(test_util.TestCase):
         op_option = self.cuda_option
         with core.DeviceScope(op_option):
             op = core.CreateOperator(
-                'Split',
-                ['input', 'split'],
-                ['X_{}'.format(i) for i in range(4)],
-                axis=0)
+                'Split', ['input', 'split'], [f'X_{i}' for i in range(4)], axis=0
+            )
         input_dev, output_dev = core.InferOpBlobDevices(op)
         # 2nd input's type is CPU irrespective of Split op's device option.
         self.assertEqual(input_dev[1], self.cpu_option)
@@ -1057,11 +1053,11 @@ external_input: "data"
         gpu_device = []
         for i in range(0, 2):
             cpu_device.append(caffe2_pb2.DeviceOption())
-            cpu_device[i].node_name = 'node:' + str(i)
+            cpu_device[i].node_name = f'node:{str(i)}'
             gpu_device.append(caffe2_pb2.DeviceOption())
             gpu_device[i].device_type = caffe2_pb2.CUDA
             gpu_device[i].device_id = 0
-            gpu_device[i].node_name = 'node:' + str(i)
+            gpu_device[i].node_name = f'node:{str(i)}'
         send_node = 'node:0'
         recv_node = 'node:1'
         placeholder_send = 'Placeholder:Dummy:Send'

@@ -43,26 +43,34 @@ def unroll(uf, IndexType, InType, OutType, use_weights, isa, fused):
         return code
 
     code = []
-    code.append("// unrolling " + str(uf) + " times")
-    code.append(IndexType + " dataInd = 0;")
-    code.append("for (" + IndexType +
-                " rangeIndex = 0; rangeIndex < output_size; ++rangeIndex) {")
-    code.append(OutType + " *op = &out[rangeIndex * block_size];")
+    code.append(f"// unrolling {str(uf)} times")
+    code.append(f"{IndexType} dataInd = 0;")
+    code.append(
+        (
+            f"for ({IndexType}"
+            + " rangeIndex = 0; rangeIndex < output_size; ++rangeIndex) {"
+        )
+    )
+    code.append(f"{OutType} *op = &out[rangeIndex * block_size];")
     for i in range(0, uf):
         j = 8 * i
-        code.append("__m256 vop" + str(j) + " = _mm256_setzero_ps();")
+        code.append(f"__m256 vop{str(j)} = _mm256_setzero_ps();")
 
     # inner loop
-    code.append("for (" + IndexType +
-                " start = dataInd; dataInd < start + lengths[rangeIndex]; ++dataInd) {")
-    code.append("const  " + IndexType + " idx = indices[dataInd];")
+    code.append(
+        (
+            f"for ({IndexType}"
+            + " start = dataInd; dataInd < start + lengths[rangeIndex]; ++dataInd) {"
+        )
+    )
+    code.append(f"const  {IndexType} idx = indices[dataInd];")
     code.append(
         'CAFFE_ENFORCE(idx >=0 && idx < data_size, "Index ", dataInd, "'
         ' is out of bounds: ", idx, ", range 0 to ", data_size);')
 
     if InType == "uint8_t":
-        code.append(OutType + " wgt = 1.f;")
-        code.append(OutType + " bio;")
+        code.append(f"{OutType} wgt = 1.f;")
+        code.append(f"{OutType} bio;")
         code.append("if (weights) {")
         code.append(
             "wgt = weights[IS_WEIGHT_POSITIONAL ? (dataInd - start) : dataInd];")
@@ -79,7 +87,7 @@ def unroll(uf, IndexType, InType, OutType, use_weights, isa, fused):
             code.append("wgt = wgt * scale_bias[2 * idx];")
         code.append("__m256 vbio = _mm256_set1_ps(bio);")
     else:
-        code.append(OutType + " wgt = 1.f;")
+        code.append(f"{OutType} wgt = 1.f;")
         code.append("if (weights) {")
         code.append(
             "wgt = weights[IS_WEIGHT_POSITIONAL ? (dataInd - start) : dataInd];")
@@ -91,7 +99,7 @@ def unroll(uf, IndexType, InType, OutType, use_weights, isa, fused):
         'const {} next_T0 = (dataInd < index_size - prefdist_T0)'
         ' ? (dataInd + prefdist_T0) : dataInd;'.format(IndexType)
     )
-    code.append("const  " + IndexType + " idx_pref_T0 = indices[next_T0];")
+    code.append(f"const  {IndexType} idx_pref_T0 = indices[next_T0];")
     code.append(
         "CAFFE_ENFORCE(idx_pref_T0 >= 0 && idx_pref_T0 < data_size);")
 
@@ -111,8 +119,7 @@ def unroll(uf, IndexType, InType, OutType, use_weights, isa, fused):
     code.append("if (normalize_by_lengths == false) {")
     for i in range(0, uf):
         j = 8 * i
-        code.append(
-            "_mm256_storeu_ps(&op[" + str(j) + "], vop" + str(j) + ");")
+        code.append(f"_mm256_storeu_ps(&op[{str(j)}], vop{str(j)});")
     code.append("} else if (lengths[rangeIndex]) {")
     # inv of length
     code.append(
@@ -120,7 +127,8 @@ def unroll(uf, IndexType, InType, OutType, use_weights, isa, fused):
     for i in range(0, uf):
         j = 8 * i
         code.append(
-            "_mm256_storeu_ps(&op[" + str(j) + "], _mm256_mul_ps(" + "vop" + str(j) + ", vlen_inv));")
+            f"_mm256_storeu_ps(&op[{str(j)}], _mm256_mul_ps(vop{str(j)}, vlen_inv));"
+        )
     code.append("}")
 
     code.append("}")
@@ -160,10 +168,14 @@ def generic(IndexType, InType, OutType, use_weights, isa, fused):
         return code
 
     code = []
-    code.append(IndexType + " dataInd = 0;")
-    code.append("for (" + IndexType +
-                " rangeIndex = 0; rangeIndex < output_size; ++rangeIndex) {")
-    code.append(OutType + " *op = &out[rangeIndex * block_size];")
+    code.append(f"{IndexType} dataInd = 0;")
+    code.append(
+        (
+            f"for ({IndexType}"
+            + " rangeIndex = 0; rangeIndex < output_size; ++rangeIndex) {"
+        )
+    )
+    code.append(f"{OutType} *op = &out[rangeIndex * block_size];")
 
     # initialize to 0
     code.append("int64_t j = 0;")
@@ -175,16 +187,20 @@ def generic(IndexType, InType, OutType, use_weights, isa, fused):
     code.append("}")
 
     # inner loop
-    code.append("for (" + IndexType +
-                " start = dataInd; dataInd < start + lengths[rangeIndex]; ++dataInd) {")
-    code.append("const  " + IndexType + " idx = indices[dataInd];")
+    code.append(
+        (
+            f"for ({IndexType}"
+            + " start = dataInd; dataInd < start + lengths[rangeIndex]; ++dataInd) {"
+        )
+    )
+    code.append(f"const  {IndexType} idx = indices[dataInd];")
     code.append(
         'CAFFE_ENFORCE(idx >=0 && idx < data_size, "Index ", dataInd, "' +
         ' is out of bounds: ", idx, ", range 0 to ", data_size);')
 
     if InType == "uint8_t":
-        code.append(OutType + " wgt = 1.f;")
-        code.append(OutType + " bio;")
+        code.append(f"{OutType} wgt = 1.f;")
+        code.append(f"{OutType} bio;")
         code.append("if (weights) {")
         code.append(
             "wgt = weights[IS_WEIGHT_POSITIONAL ? (dataInd - start) : dataInd];")
@@ -202,7 +218,7 @@ def generic(IndexType, InType, OutType, use_weights, isa, fused):
             code.append("wgt = wgt * scale_bias[2 * idx];")
         code.append("__m256 vbio = _mm256_set1_ps(bio);")
     else:
-        code.append(OutType + " wgt = 1.f;")
+        code.append(f"{OutType} wgt = 1.f;")
         code.append("if (weights) {")
         code.append(
             "wgt = weights[IS_WEIGHT_POSITIONAL ? (dataInd - start) : dataInd];")
@@ -214,7 +230,7 @@ def generic(IndexType, InType, OutType, use_weights, isa, fused):
         'const {} next_T0 = (dataInd < index_size - prefdist_T0)'
         ' ? (dataInd + prefdist_T0) : dataInd;'.format(IndexType)
     )
-    code.append("const  " + IndexType + " idx_pref_T0 = indices[next_T0];")
+    code.append(f"const  {IndexType} idx_pref_T0 = indices[next_T0];")
     code.append(
         "CAFFE_ENFORCE(idx_pref_T0 >= 0 && idx_pref_T0 < data_size);")
     code.append(

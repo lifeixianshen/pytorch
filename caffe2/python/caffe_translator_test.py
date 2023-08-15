@@ -69,11 +69,9 @@ class TestNumericalEquivalence(test_util.TestCase):
             "conv4", "conv5", "pool5", "fc6", "fc7", "fc8", "prob"
         ]
         for name in names:
-            print('Verifying {}'.format(name))
+            print(f'Verifying {name}')
             caffe2_result = workspace.FetchBlob(name)
-            reference = np.load(
-                'data/testdata/caffe_translator/' + name + '_dump.npy'
-            )
+            reference = np.load(f'data/testdata/caffe_translator/{name}_dump.npy')
             self.assertEqual(caffe2_result.shape, reference.shape)
             scale = np.max(caffe2_result)
             np.testing.assert_almost_equal(

@@ -397,13 +397,9 @@ class TestLayers(LayersTestCase):
                 ((np.float32, (N, embedding_dim)))
             )),
         ))
-        current = self.model.PairwiseSimilarity(
-            record, N * N)
+        current = self.model.PairwiseSimilarity(record, N**2)
 
-        self.assertEqual(
-            schema.Scalar((np.float32, (N * N, ))),
-            current
-        )
+        self.assertEqual(schema.Scalar((np.float32, (N**2, ))), current)
 
         train_init_net, train_net = self.get_training_nets()
         self.assertNetContainOps(train_init_net, [])
@@ -1353,8 +1349,7 @@ class TestLayers(LayersTestCase):
             lengths = np.random.randint(5, size=batch_size).astype(np.int32)
             size = lengths.sum()
             values = np.random.randint(1, 10, size=size).astype(np.int64)
-            inputs.append(lengths)
-            inputs.append(values)
+            inputs.extend((lengths, values))
         input_schema = schema.Tuple(
             *[schema.List(
                 schema.Scalar(dtype=np.int64, metadata=schema.Metadata(

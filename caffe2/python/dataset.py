@@ -27,7 +27,7 @@ class _DatasetReader(Reader):
         """Don't call this directly. Instead, use dataset.reader()"""
         Reader.__init__(self, dataset.content())
         self.dataset = dataset
-        self.name = name or (dataset.name + '_cursor')
+        self.name = name or f'{dataset.name}_cursor'
         self.batch_size = batch_size
         self.enforce_batch_size = enforce_batch_size
         self.cursor = None
@@ -62,7 +62,7 @@ class _DatasetRandomReader(Reader):
         Reader.__init__(self, dataset.content())
         self.dataset = dataset
         self.cursor = None
-        self.name = name or (dataset.name + '_cursor')
+        self.name = name or f'{dataset.name}_cursor'
         self.indices = indices
         self.batch_size = batch_size
         self.loop_over = loop_over
@@ -143,8 +143,9 @@ class _DatasetWriter(Writer):
         """
         assert self.mutex is not None, 'setup not called.'
         field_blobs = self._content.field_blobs()
-        assert len(fields) == len(field_blobs), (
-            'Expected %s fields, got %s.' % (len(field_blobs), len(fields)))
+        assert len(fields) == len(
+            field_blobs
+        ), f'Expected {len(field_blobs)} fields, got {len(fields)}.'
         writer_net.CheckDatasetConsistency(
             fields, [], fields=self._content.field_names())
         writer_net.AtomicAppend(
@@ -204,8 +205,9 @@ class Dataset(object):
                     compatible with the one described in schema.py.
             name: optional name to prepend to blobs that will store the data.
         """
-        assert isinstance(fields, list) or isinstance(fields, Struct), (
-            'fields must be either a Struct or a list of raw field names.')
+        assert isinstance(
+            fields, (list, Struct)
+        ), 'fields must be either a Struct or a list of raw field names.'
         if isinstance(fields, list):
             fields = from_column_list(fields)
         self.schema = fields

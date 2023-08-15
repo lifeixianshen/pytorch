@@ -52,9 +52,8 @@ def pickle(filename, data):
         cPickle.dump(data, fo, protocol=cPickle.HIGHEST_PROTOCOL)
 
 def unpickle(filename):
-    fo = open(filename, 'r')
-    contents = cPickle.load(fo)
-    fo.close()
+    with open(filename, 'r') as fo:
+        contents = cPickle.load(fo)
     return contents
 
 def partition_list(l, partition_size):
@@ -75,8 +74,16 @@ def parse_devkit_meta(ILSVRC_DEVKIT_TAR):
     tf = open_tar(ILSVRC_DEVKIT_TAR, 'devkit tar')
     fmeta = tf.extractfile(tf.getmember('ILSVRC2012_devkit_t12/data/meta.mat'))
     meta_mat = scipy.io.loadmat(StringIO(fmeta.read()))
-    labels_dic = dict((m[0][1][0], m[0][0][0][0]-1) for m in meta_mat['synsets'] if m[0][0][0][0] >= 1 and m[0][0][0][0] <= 1000)
-    label_names_dic = dict((m[0][1][0], m[0][2][0]) for m in meta_mat['synsets'] if m[0][0][0][0] >= 1 and m[0][0][0][0] <= 1000)
+    labels_dic = {
+        m[0][1][0]: m[0][0][0][0] - 1
+        for m in meta_mat['synsets']
+        if m[0][0][0][0] >= 1 and m[0][0][0][0] <= 1000
+    }
+    label_names_dic = {
+        m[0][1][0]: m[0][2][0]
+        for m in meta_mat['synsets']
+        if m[0][0][0][0] >= 1 and m[0][0][0][0] <= 1000
+    }
     label_names = [tup[1] for tup in sorted([(v,label_names_dic[k]) for k,v in labels_dic.items()], key=lambda x:x[0])]
 
     fval_ground_truth = tf.extractfile(tf.getmember('ILSVRC2012_devkit_t12/data/ILSVRC2012_validation_ground_truth.txt'))

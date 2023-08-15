@@ -26,15 +26,16 @@ class _ContextInfo(object):
         self._stack.append(value)
 
     def exit(self, value):
-        assert len(self._stack) > 0, 'Context %s is empty.' % self.cls
+        assert len(self._stack) > 0, f'Context {self.cls} is empty.'
         assert self._stack.pop() == value
 
     def get_active(self, required=True):
         if len(self._stack) == 0:
             if not required:
                 return None
-            assert self.allow_default, (
-                'Context %s is required but none is active.' % self.cls)
+            assert (
+                self.allow_default
+            ), f'Context {self.cls} is required but none is active.'
             self.enter(self.cls())
         return self._stack[-1]
 
@@ -45,12 +46,13 @@ class _ContextRegistry(object):
 
     def register(self, ctx_info):
         assert isinstance(ctx_info, _ContextInfo)
-        assert (ctx_info.cls not in self._ctxs), (
-            'Context %s already registered' % ctx_info.cls)
+        assert (
+            ctx_info.cls not in self._ctxs
+        ), f'Context {ctx_info.cls} already registered'
         self._ctxs[ctx_info.cls] = ctx_info
 
     def get(self, cls):
-        assert cls in self._ctxs, 'Context %s not registered.' % cls
+        assert cls in self._ctxs, f'Context {cls} not registered.'
         return self._ctxs[cls]
 
 
@@ -94,9 +96,9 @@ class define_context(object):
         self.allow_default = allow_default
 
     def __call__(self, cls):
-        assert not hasattr(cls, '_ctx_class'), (
-            '%s parent class (%s) already defines context.' % (
-                cls, cls._ctx_class))
+        assert not hasattr(
+            cls, '_ctx_class'
+        ), f'{cls} parent class ({cls._ctx_class}) already defines context.'
         cls._ctx_class = cls
 
         _context_registry().register(
@@ -117,7 +119,8 @@ class define_context(object):
 def _get_active_context(cls, val=None, required=True):
     ctx_info = _context_registry().get(cls)
     if val is not None:
-        assert isinstance(val, cls), (
-            'Wrong context type. Expected: %s, got %s.' % (cls, type(val)))
+        assert isinstance(
+            val, cls
+        ), f'Wrong context type. Expected: {cls}, got {type(val)}.'
         return val
     return ctx_info.get_active(required=required)

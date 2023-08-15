@@ -56,11 +56,10 @@ class CodeTemplate(object):
                 return indent_lines(indent, v)
             elif isinstance(v, list):
                 middle = ', '.join([str(x) for x in v])
-                if len(v) == 0:
-                    return middle
-                return comma_before + middle + comma_after
+                return middle if len(v) == 0 else comma_before + middle + comma_after
             else:
                 return str(v)
+
         return self.subtitution.sub(replace, self.pattern)
 
 

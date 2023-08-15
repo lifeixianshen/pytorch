@@ -117,9 +117,7 @@ class ImageDataProvider(LabeledDataProvider):
     def get_data_dims(self, idx=0):
         if idx == 0:
             return self.inner_size**2 * 3
-        if idx == 2:
-            return self.get_num_classes()
-        return 1
+        return self.get_num_classes() if idx == 2 else 1
 
     def start_loader(self, batch_idx):
         self.load_data = []
@@ -203,19 +201,19 @@ class ImageDataProvider(LabeledDataProvider):
     # fed to pylab for plotting.
     # This is used by shownet.py to plot test case predictions.
     def get_plottable_data(self, data, add_mean=True):
-        mean = self.data_mean_crop.reshape((data.shape[0],1)) if data.flags.f_contiguous or self.scalar_mean else self.data_mean_crop.reshape((data.shape[0],1))
+        mean = self.data_mean_crop.reshape((data.shape[0],1))
         return n.require((data + (mean if add_mean else 0)).T.reshape(data.shape[1], 3, self.inner_size, self.inner_size).swapaxes(1,3).swapaxes(1,2) / 255.0, dtype=n.single)
        
 class CIFARDataProvider(LabeledDataProvider):
     def __init__(self, data_dir, batch_range=None, init_epoch=1, init_batchnum=None, dp_params=None, test=False):
         LabeledDataProvider.__init__(self, data_dir, batch_range, init_epoch, init_batchnum, dp_params, test)
-        self.img_size = 32 
+        self.img_size = 32
         self.num_colors = 3
         self.inner_size =  dp_params['inner_size'] if dp_params['inner_size'] > 0 else self.batch_meta['img_size']
         self.border_size = (self.img_size - self.inner_size) / 2
         self.multiview = dp_params['multiview_test'] and test
         self.num_views = 9
-        self.scalar_mean = dp_params['scalar_mean'] 
+        self.scalar_mean = dp_params['scalar_mean']
         self.data_mult = self.num_views if self.multiview else 1
         self.data_dic = []
         for i in batch_range:
@@ -223,8 +221,17 @@ class CIFARDataProvider(LabeledDataProvider):
             self.data_dic[-1]["labels"] = n.require(self.data_dic[-1]['labels'], dtype=n.single)
             self.data_dic[-1]["labels"] = n.require(n.tile(self.data_dic[-1]["labels"].reshape((1, n.prod(self.data_dic[-1]["labels"].shape))), (1, self.data_mult)), requirements='C')
             self.data_dic[-1]['data'] = n.require(self.data_dic[-1]['data'] - self.scalar_mean, dtype=n.single, requirements='C')
-        
-        self.cropped_data = [n.zeros((self.get_data_dims(), self.data_dic[0]['data'].shape[1]*self.data_mult), dtype=n.single) for x in xrange(2)]
+
+        self.cropped_data = [
+            n.zeros(
+                (
+                    self.get_data_dims(),
+                    self.data_dic[0]['data'].shape[1] * self.data_mult,
+                ),
+                dtype=n.single,
+            )
+            for _ in xrange(2)
+        ]
 
         self.batches_generated = 0
         self.data_mean = self.batch_meta['data_mean'].reshape((self.num_colors,self.img_size,self.img_size))[:,self.border_size:self.border_size+self.inner_size,self.border_size:self.border_size+self.inner_size].reshape((self.get_data_dims(), 1))

@@ -32,7 +32,7 @@ class ComputeTopKAccuracy(Meter.Meter):
         for idx in range(self.opts['distributed']['first_xpu_id'],
                          self.opts['distributed']['first_xpu_id'] +
                          self.opts['distributed']['num_xpus']):
-            prefix = '{}_{}/'.format(self.opts['distributed']['device'], idx)
+            prefix = f"{self.opts['distributed']['device']}_{idx}/"
             softmax = workspace.FetchBlob(prefix + self.blob_name[0])
             labels = workspace.FetchBlob(prefix + self.blob_name[1])
             output = np.squeeze(softmax)
@@ -41,10 +41,10 @@ class ComputeTopKAccuracy(Meter.Meter):
                 output = output.reshape((1, output.shape[0]))
             else:
                 assert len(output.shape) == 2, \
-                    'wrong output size (1D or 2D expected)'
+                        'wrong output size (1D or 2D expected)'
             assert len(target.shape) == 1, 'wrong target size (1D expected)'
             assert output.shape[0] == target.shape[0], \
-                'target and output do not match'
+                    'target and output do not match'
 
             N = output.shape[0]
             pred = np.argsort(-output, axis=1)[:, :self.topk]

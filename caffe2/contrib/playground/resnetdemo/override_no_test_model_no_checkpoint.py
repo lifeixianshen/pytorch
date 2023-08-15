@@ -5,7 +5,6 @@ from __future__ import unicode_literals
 
 def checkpoint(self, epoch):
     self.model_path = None
-    pass
 
 def prep_data_parallel_models(self):
     # only do train_model no test needed here

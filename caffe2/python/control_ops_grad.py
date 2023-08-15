@@ -44,16 +44,15 @@ def gen_do_gradient(op, g_output):
 
     backward_pass_initial_grad_map = {}
     initial_grad_map = {}
-    for inner_output_name, outer_grad_output_name in \
-            zip(ordered_inner_output_blob_names, g_output):
+    for inner_output_name, outer_grad_output_name in zip(ordered_inner_output_blob_names, g_output):
         # link inner_output_name to corresponding inner_grad_output_name for
         # backward pass generation;
         if outer_grad_output_name:
-            inner_grad_output_name = inner_output_name + "/_DO_OPERATOR_INNER_GRAD_"
+            inner_grad_output_name = f"{inner_output_name}/_DO_OPERATOR_INNER_GRAD_"
             backward_pass_initial_grad_map[BlobReference(inner_output_name)] = \
                 BlobReference(inner_grad_output_name)
             initial_grad_map[inner_grad_output_name] = str(outer_grad_output_name)
-    assert len(initial_grad_map) > 0, "Empty initial gradient map for Do op"
+    assert initial_grad_map, "Empty initial gradient map for Do op"
 
     inner_grad_ops, inner_grad_names_map = _gen_subgradient_pass(
         subnet, backward_pass_initial_grad_map)
@@ -69,7 +68,7 @@ def gen_do_gradient(op, g_output):
         inner_input_name = outer_to_inner_map[outer_input_name]
         if inner_input_name in inner_grad_names_map:
             inner_grad_input_name = inner_grad_names_map[inner_input_name]
-            outer_grad_input_name = outer_input_name + "_grad"
+            outer_grad_input_name = f"{outer_input_name}_grad"
 
             # It is possible that inner_grad_input_name will need to be
             # linked to another outer blob. For example:
@@ -110,8 +109,7 @@ def gen_do_gradient(op, g_output):
 
             # TODO(iliacher): Remove unnecessary blob copying
 
-            new_inner_grad_input_name = \
-                inner_input_name + "/_DO_OPERATOR_INNER_GRAD_COPY_"
+            new_inner_grad_input_name = f"{inner_input_name}/_DO_OPERATOR_INNER_GRAD_COPY_"
             grad_copy_ops.append(_prepare_blob_copy_op(
                 inner_grad_input_name, new_inner_grad_input_name))
 
@@ -181,20 +179,19 @@ def dedupe_g_output(op, g_output):
 
         if output_name in init_grad_map:
             deduped_g_output.append(init_grad_map[output_name])
+        elif grad_name in init_grad_map.values():
+            deduped_grad_name = f"{output_name}_{grad_name}_DEDUP"
+            assert deduped_grad_name not in init_grad_map.values()
+            grad_copy_op = caffe2_pb2.OperatorDef()
+            grad_copy_op.type = "Copy"
+            grad_copy_op.input.extend([grad_name])
+            grad_copy_op.output.extend([deduped_grad_name])
+            grad_ops.append(grad_copy_op)
+            deduped_g_output.append(deduped_grad_name)
+            init_grad_map[output_name] = deduped_grad_name
         else:
-            if grad_name not in init_grad_map.values():
-                init_grad_map[output_name] = grad_name
-                deduped_g_output.append(grad_name)
-            else:
-                deduped_grad_name = output_name + "_" + grad_name + "_DEDUP"
-                assert deduped_grad_name not in init_grad_map.values()
-                grad_copy_op = caffe2_pb2.OperatorDef()
-                grad_copy_op.type = "Copy"
-                grad_copy_op.input.extend([grad_name])
-                grad_copy_op.output.extend([deduped_grad_name])
-                grad_ops.append(grad_copy_op)
-                deduped_g_output.append(deduped_grad_name)
-                init_grad_map[output_name] = deduped_grad_name
+            init_grad_map[output_name] = grad_name
+            deduped_g_output.append(grad_name)
     return grad_ops, deduped_g_output
 
 
@@ -212,13 +209,13 @@ def gen_while_gradient(op, g_output):
     grad_ops, deduped_g_output = dedupe_g_output(op, g_output)
     g_output = deduped_g_output
 
-    init_grad_map = {}
     op_output = [str(o) for o in op.output]
-    for output_name, grad_output_name in zip(op_output, g_output):
-        if grad_output_name:
-            init_grad_map[BlobReference(output_name)] = \
-                BlobReference(grad_output_name)
-    assert len(init_grad_map) > 0, "Empty initial gradient map for While op"
+    init_grad_map = {
+        BlobReference(output_name): BlobReference(grad_output_name)
+        for output_name, grad_output_name in zip(op_output, g_output)
+        if grad_output_name
+    }
+    assert init_grad_map, "Empty initial gradient map for While op"
 
     loop_net = _get_net_argument(op, "loop_net")
     assert loop_net, "Expected loop subnet in While op"
@@ -277,7 +274,7 @@ def _prepare_gradient_while_ops(
     # left using HasScope op
     cond_net = Net('gradient_loop_cond_net')
     cond_init_net = Net('gradient_loop_cond_net_init')
-    cond_blob = cond_net.NextScopedBlob(cond_net.Name() + '/cond')
+    cond_blob = cond_net.NextScopedBlob(f'{cond_net.Name()}/cond')
     cond_init_net.HasScope(workspace_blob, cond_blob)
     cond_net.HasScope(workspace_blob, cond_blob)
     for blob, init_grad_blob in init_grad_map.items():
@@ -301,7 +298,7 @@ def _prepare_gradient_while_ops(
     del gradient_while_def.output[:]
     gradient_while_def.output.extend(output_names)
     gradient_while_def.is_gradient_op = True
-    return [o for o in cond_init_net.Proto().op] + [gradient_while_def]
+    return list(cond_init_net.Proto().op) + [gradient_while_def]
 
 
 def _get_do_arguments(do_op):
@@ -342,15 +339,15 @@ def gen_if_gradient(op, g_output):
     grad_ops, deduped_g_output = dedupe_g_output(op, g_output)
     g_output = deduped_g_output
 
-    init_grad_map = {}  # map from if's output blob to output gradient blob
     op_input = [str(i) for i in op.input]
     op_output = [str(o) for o in op.output]
-    for output_name, grad_output_name in zip(op_output, g_output):
-        if grad_output_name:
-            init_grad_map[BlobReference(output_name)] = \
-                BlobReference(grad_output_name)
+    init_grad_map = {
+        BlobReference(output_name): BlobReference(grad_output_name)
+        for output_name, grad_output_name in zip(op_output, g_output)
+        if grad_output_name
+    }
     # shouldn't call without at least one output gradient available
-    assert len(init_grad_map) > 0, "Empty initial gradient map for If op"
+    assert init_grad_map, "Empty initial gradient map for If op"
 
     grad_map = {}  # map from blob to gradient blob
     then_net = _get_net_argument(op, "then_net")
@@ -358,14 +355,13 @@ def gen_if_gradient(op, g_output):
     then_grad_net, then_grad_map, then_input_names, then_output_names = \
         _gen_subnet_gradient(then_net, init_grad_map)
     assert then_grad_net, "Failed to get gradient net for then in If op"
-    grad_map.update(then_grad_map)
+    grad_map |= then_grad_map
 
     else_input_names = set()
     else_output_names = set()
     else_grad_map = {}
     else_grad_net = None
-    else_net = _get_net_argument(op, "else_net")
-    if else_net:
+    if else_net := _get_net_argument(op, "else_net"):
         else_grad_net, else_grad_map, else_input_names, else_output_names = \
             _gen_subnet_gradient(else_net, init_grad_map)
         assert else_grad_net, "Failed to get gradient net for else in If op"
@@ -380,16 +376,14 @@ def gen_if_gradient(op, g_output):
                 # and another branch uses blob and has <blob_name>_grad name
                 # in it's grad map (might be different from original grad blob)
                 if then_grad_blob != else_grad_blob:
-                    init_grad_name = init_grad_map[else_blob] \
-                        if else_blob in init_grad_map else None
+                    init_grad_name = init_grad_map.get(else_blob, None)
 
                     if then_grad_blob == init_grad_name:
                         grad_map[else_blob] = else_grad_blob
                     elif else_grad_blob == init_grad_name:
                         grad_map[else_blob] = then_grad_blob
                     else:
-                        raise "Unexpected grad blob name " + else_blob + ", " + \
-                            else_grad_blob + ", " + then_grad_blob
+                        raise f"Unexpected grad blob name {else_blob}, {else_grad_blob}, {then_grad_blob}"
             else:
                 grad_map[else_blob] = else_grad_blob
 
@@ -397,8 +391,9 @@ def gen_if_gradient(op, g_output):
     # by the selected if's branch are initialized with zeros
     then_other_output_names = \
         then_output_names - (then_output_names & else_output_names)
-    then_other_grad_output_names = set(
-        [o for o in then_other_output_names if o in then_grad_map.values()])
+    then_other_grad_output_names = {
+        o for o in then_other_output_names if o in then_grad_map.values()
+    }
     zero_then = _gen_grad_zero_init_ops(
         init_grad_map, then_grad_map, then_other_grad_output_names)
     if else_grad_net:
@@ -415,8 +410,9 @@ def gen_if_gradient(op, g_output):
 
     else_other_output_names = \
         else_output_names - (then_output_names & else_output_names)
-    else_other_grad_output_names = set(
-        [o for o in else_other_output_names if o in else_grad_map.values()])
+    else_other_grad_output_names = {
+        o for o in else_other_output_names if o in else_grad_map.values()
+    }
     zero_else = _gen_grad_zero_init_ops(
         init_grad_map, else_grad_map, else_other_grad_output_names)
     then_grad_net.op.extend(zero_else)
@@ -463,7 +459,7 @@ def _gen_subnet_gradient(subnet, init_grad):
 def _get_net_argument(op, net_name):
     for arg in op.arg:
         if arg.name and arg.name == net_name:
-            assert arg.n, "Expected non empty net argument " + net_name
+            assert arg.n, f"Expected non empty net argument {net_name}"
             return arg.n
     return None
 
@@ -473,9 +469,7 @@ def _gen_subgradient_pass(subnet, init_grad):
     subnet_ir = IR(subnet.op)
     grad_ops, grad_blob_map = \
         subnet_ir.GetBackwardPass(init_grad)
-    grad_names_map = {}
-    for b, g in grad_blob_map.items():
-        grad_names_map[str(b)] = str(g)
+    grad_names_map = {str(b): str(g) for b, g in grad_blob_map.items()}
     return grad_ops, grad_names_map
 
 
@@ -488,16 +482,17 @@ def _do_op_sanity_check_and_process(op):
     inner_blobs = None
     outer_blobs_idx = None
     for arg in op.arg:
-        if arg.name and arg.name == "inner_blobs":
-            assert not inner_blobs, "inner_blobs redefinition"
-            assert arg.strings and len(arg.strings) > 0, \
-                "Empty inner_blobs argument in Do op"
-            inner_blobs = [s.decode('utf-8') for s in arg.strings]
-        if arg.name and arg.name == "outer_blobs_idx":
-            assert not outer_blobs_idx, "outer_blobs_idx redefinition"
-            assert arg.ints and len(arg.ints) > 0, \
-                "Empty outer_blobs_idx argument in Do op"
-            outer_blobs_idx = arg.ints
+        if arg.name:
+            if arg.name == "inner_blobs":
+                assert not inner_blobs, "inner_blobs redefinition"
+                assert arg.strings and len(arg.strings) > 0, \
+                    "Empty inner_blobs argument in Do op"
+                inner_blobs = [s.decode('utf-8') for s in arg.strings]
+            elif arg.name == "outer_blobs_idx":
+                assert not outer_blobs_idx, "outer_blobs_idx redefinition"
+                assert arg.ints and len(arg.ints) > 0, \
+                    "Empty outer_blobs_idx argument in Do op"
+                outer_blobs_idx = arg.ints
         if inner_blobs and outer_blobs_idx:
             break
 
@@ -512,13 +507,13 @@ def _do_op_sanity_check_and_process(op):
         "Found duplicates in inner_blobs in Do op"
 
     op_input = [str(i) for i in op.input]
-    assert len(op_input) > 0, "Expected at least one input blob"
+    assert op_input, "Expected at least one input blob"
     # remove last input blob that holds pointer to workspace
     input_workspace_blob_name = op_input[-1]
     op_input = op_input[:-1]
 
     op_output = [str(o) for o in op.output]
-    assert len(op_output) > 0, "Expected at least one output blob"
+    assert op_output, "Expected at least one output blob"
     # remove last output blob that holds pointer to workspace
     workspace_blob_name = op_output[-1]
     assert input_workspace_blob_name == workspace_blob_name, \
@@ -542,8 +537,9 @@ def _do_op_sanity_check_and_process(op):
             outer_blob_idx < len(ordered_outer_blob_names), \
             "Outer blob index is out of bounds in Do op"
         outer_name = ordered_outer_blob_names[outer_blob_idx]
-        assert outer_name not in used_outer_blob_names, \
-            "Reusage of outer blob name " + outer_name + " in Do op"
+        assert (
+            outer_name not in used_outer_blob_names
+        ), f"Reusage of outer blob name {outer_name} in Do op"
         used_outer_blob_names.add(outer_name)
         outer_to_inner_map[outer_name] = inner_name
         inner_to_outer_map[inner_name] = outer_name
@@ -623,14 +619,8 @@ def _prepare_gradient_do_op(
 def _gen_grad_zero_init_ops(init_grad_map, grad_map, grad_output_names):
     grad_init_ops = []
     for grad_output in grad_output_names:
-        # get the corresponding output name blob and use it in ConstantFill
-        # so that grad_output has the same shape
-        output_name = None
-        for o, g in grad_map.items():
-            if g == grad_output:
-                output_name = o
-                break
-        assert output_name, "Unknown gradient output " + grad_output
+        output_name = next((o for o, g in grad_map.items() if g == grad_output), None)
+        assert output_name, f"Unknown gradient output {grad_output}"
 
         grad_init_op = None
         # make sure that we do not overwrite existing gradients with zeros

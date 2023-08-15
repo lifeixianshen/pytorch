@@ -167,12 +167,11 @@ class TestOperators(hu.HypothesisTestCase):
 
     def test_add(self):
         def not_overflow(x):
-            if not isinstance(x, float):
-                return abs(x) < (1 << 30) - 1
-            return True
+            return abs(x) < (1 << 30) - 1 if not isinstance(x, float) else True
 
         def ref(x, y):
             return (x + y, )
+
         _test_binary("Add", ref, filter_=not_overflow, test_gradient=True)(self)
         _test_binary_broadcast("Add", ref, filter_=not_overflow)(self)
 
@@ -185,12 +184,11 @@ class TestOperators(hu.HypothesisTestCase):
 
     def test_mul(self):
         def not_overflow(x):
-            if not isinstance(x, float):
-                return abs(x) < (1 << 15) - 1
-            return True
+            return abs(x) < (1 << 15) - 1 if not isinstance(x, float) else True
 
         def ref(x, y):
             return (x * y, )
+
         _test_binary("Mul", ref, filter_=not_overflow, test_gradient=True)(self)
         _test_binary_broadcast("Mul", ref, filter_=not_overflow)(self)
 
@@ -831,7 +829,7 @@ class TestOperators(hu.HypothesisTestCase):
                     key=lambda x: x[0],
                     reverse=True
                 )
-                max_ids = [x[1] for x in pred_sorted[0:top_k]]
+                max_ids = [x[1] for x in pred_sorted[:top_k]]
                 for m in max_ids:
                     if m == labels[i]:
                         correct += 1
@@ -1303,8 +1301,10 @@ class TestOperators(hu.HypothesisTestCase):
         for i in range(num_producers):
             name = 'producer_%d' % i
             net = core.Net(name)
-            blobs = [net.ConstantFill([], 1, value=1.0, run_once=False)
-                     for times in range(num_blobs)]
+            blobs = [
+                net.ConstantFill([], 1, value=1.0, run_once=False)
+                for _ in range(num_blobs)
+            ]
             status = net.NextName()
             net.SafeEnqueueBlobs([queue] + blobs, blobs + [status])
             count = (i + 1) * 10
@@ -1328,7 +1328,7 @@ class TestOperators(hu.HypothesisTestCase):
             blobs = net1.SafeDequeueBlobs([queue], num_blobs + 1)
             status = blobs[-1]
 
-            net2 = core.Net(name + '_counter')
+            net2 = core.Net(f'{name}_counter')
             counter = init_net.ConstantFill([], 1, value=0.0)
             counters.append(counter)
             net2.Add([counter, const_1], counter)
@@ -1346,9 +1346,7 @@ class TestOperators(hu.HypothesisTestCase):
         plan.AddStep(worker_step)
 
         self.ws.run(plan)
-        v = 0
-        for counter in counters:
-            v += self.ws.blobs[str(counter)].fetch().tolist()
+        v = sum(self.ws.blobs[str(counter)].fetch().tolist() for counter in counters)
         self.assertEqual(v, truth)
 
     @given(num_queues=st.integers(1, 5),
@@ -1455,8 +1453,7 @@ class TestOperators(hu.HypothesisTestCase):
             dims=dims)
 
         def expand_dims_ref(data, *args, **kw):
-            inc_dims = list(set(dims))
-            inc_dims.sort()
+            inc_dims = sorted(set(dims))
             r = data
             for dim in inc_dims:
                 r = np.expand_dims(r, axis=dim)
@@ -1568,7 +1565,7 @@ class TestOperators(hu.HypothesisTestCase):
 
         self.ws.run(m.param_init_net)
 
-        print(str(m.Proto()))
+        print(m.Proto())
 
         def run():
             import numpy as np
@@ -1771,7 +1768,7 @@ class TestOperators(hu.HypothesisTestCase):
         concurrent_steps = core.ExecutionStep("concurrent_steps",
                                               num_iter=num_iters)
         for i in range(num_nets):
-            net = core.Net("net_{}".format(i))
+            net = core.Net(f"net_{i}")
             net.AtomicIter([iter_mutex, "iter"], ["iter"])
             step = core.ExecutionStep("step", [net])
             concurrent_steps.AddSubstep(step)

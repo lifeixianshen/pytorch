@@ -45,9 +45,7 @@ def initOpts(opts):
 
     opts['distributed']['num_xpus'] = num_xpus
     opts['distributed']['first_xpu_id'] = first_xpu
-    opts['temp_var'] = {}
-    opts['temp_var']['metrics_output'] = {}
-
+    opts['temp_var'] = {'metrics_output': {}}
     return opts
 
 
@@ -106,12 +104,12 @@ class AnyExpTrainer(object):
         self.xpus = range(first_xpu, first_xpu + num_xpus)
 
         self.total_batch_size = \
-            self.opts['epoch_iter']['batch_per_device'] * \
-            self.opts['distributed']['num_xpus'] * \
-            self.opts['distributed']['num_shards']
+                self.opts['epoch_iter']['batch_per_device'] * \
+                self.opts['distributed']['num_xpus'] * \
+                self.opts['distributed']['num_shards']
         self.epoch_iterations = \
-            self.opts['epoch_iter']['num_train_sample_per_epoch'] // \
-            self.total_batch_size
+                self.opts['epoch_iter']['num_train_sample_per_epoch'] // \
+                self.total_batch_size
 
         if len(opts['input']['datasets']) > 0:
             self.train_df = opts['input']['datasets'][0]
@@ -125,7 +123,7 @@ class AnyExpTrainer(object):
         self.epoch = opts['temp_var']['epoch']
         self.epochs_to_run = opts['epoch_iter']['num_epochs_per_flow_schedule']
 
-        log.info('opts: {}'.format(str(opts)))
+        log.info(f'opts: {str(opts)}')
 
     @abstractmethod
     def get_input_dataset(self, opts):
@@ -153,25 +151,22 @@ class AnyExpTrainer(object):
 
     def add_metric(self, name, calculator, is_train):
         metrics = self.metrics
-        metrics[name] = {}
-        metrics[name]['calculator'] = calculator
-        metrics[name]['is_train'] = is_train
-        metrics[name]['output'] = []
+        metrics[name] = {'calculator': calculator, 'is_train': is_train, 'output': []}
 
     def extendMetricsOutput(self):
-        metrics_output = self.metrics_output
-        if not metrics_output:
-            metrics_output['epochs'] = self.record_epochs
-            metrics_output['samples_per_sec'] = self.samples_per_sec
-            metrics_output['secs_per_train'] = self.secs_per_train
-            for metric, value in self.metrics.items():
-                metrics_output[metric] = value['output']
-        else:
+        if metrics_output := self.metrics_output:
             metrics_output['epochs'].extend(self.record_epochs)
             metrics_output['samples_per_sec'].extend(self.samples_per_sec)
             metrics_output['secs_per_train'].extend(self.secs_per_train)
             for metric, value in self.metrics.items():
                 metrics_output[metric].extend(value['output'])
+
+        else:
+            metrics_output['epochs'] = self.record_epochs
+            metrics_output['samples_per_sec'] = self.samples_per_sec
+            metrics_output['secs_per_train'] = self.secs_per_train
+            for metric, value in self.metrics.items():
+                metrics_output[metric] = value['output']
 
     @abstractmethod
     def init_plots(self):
@@ -179,11 +174,7 @@ class AnyExpTrainer(object):
 
     def add_plot(self, x, x_title, ys, y_title):
         plotsIngredients = self.plotsIngredients
-        aPlotIngredients = {}
-        aPlotIngredients['x'] = x
-        aPlotIngredients['x_title'] = x_title
-        aPlotIngredients['ys'] = ys
-        aPlotIngredients['y_title'] = y_title
+        aPlotIngredients = {'x': x, 'x_title': x_title, 'ys': ys, 'y_title': y_title}
         plotsIngredients.append(aPlotIngredients)
 
     @abstractmethod
@@ -213,8 +204,8 @@ class AnyExpTrainer(object):
             epoch + 1, self.opts, float('-inf'))
 
     def gen_checkpoint_path(self, is_checkpoint, epoch):
-        if (is_checkpoint):
-            filename = "model_checkpoint_epoch{}.pkl".format(epoch)
+        if is_checkpoint:
+            filename = f"model_checkpoint_epoch{epoch}.pkl"
         else:
             filename = "model_final.pkl"
         return self.opts['output']['checkpoint_folder'] + filename
@@ -298,13 +289,13 @@ class AnyExpTrainer(object):
         log.info('in prep_a_data_parallel_model')
 
         param_update = \
-            self.gen_param_update_builder_fun(model, dataset, is_train) \
-            if self.gen_param_update_builder_fun is not None else None
+                self.gen_param_update_builder_fun(model, dataset, is_train) \
+                if self.gen_param_update_builder_fun is not None else None
         log.info('in prep_a_data_parallel_model param_update done ')
 
         optimizer = \
-            self.gen_optimizer_fun(model, dataset, is_train) \
-            if self.gen_optimizer_fun is not None else None
+                self.gen_optimizer_fun(model, dataset, is_train) \
+                if self.gen_optimizer_fun is not None else None
         log.info('in prep_a_data_parallel_model optimizer done ')
 
         max_ops = self.opts['model_param']['max_concurrent_distributed_ops']
@@ -337,7 +328,7 @@ class AnyExpTrainer(object):
         # for op in model.net.Proto().op:
         #     log.info('op type engine {} {}'.format(op.type, op.engine))
 
-        log.info('model.net.Proto() {}'.format(model.net.Proto()))
+        log.info(f'model.net.Proto() {model.net.Proto()}')
 
         workspace.CreateNet(model.net)
 
@@ -354,11 +345,9 @@ class AnyExpTrainer(object):
         num_xpus = opts['distributed']['num_xpus']
         if (previous_checkpoint is not None):
             if os.path.exists(previous_checkpoint):
-                log.info('Load previous checkpoint:{}'.format(
-                    previous_checkpoint
-                ))
+                log.info(f'Load previous checkpoint:{previous_checkpoint}')
                 start_epoch, prev_checkpointed_lr, _best_metric = \
-                    checkpoint.initialize_params_from_file(
+                        checkpoint.initialize_params_from_file(
                         model=self.train_model,
                         weights_file=previous_checkpoint,
                         num_xpus=num_xpus,
@@ -367,9 +356,9 @@ class AnyExpTrainer(object):
                         reset_epoch=False,
                     )
         elif pretrained_model is not None and os.path.exists(pretrained_model):
-            log.info("Load pretrained model: {}".format(pretrained_model))
+            log.info(f"Load pretrained model: {pretrained_model}")
             start_epoch, prev_checkpointed_lr, best_metric = \
-                checkpoint.initialize_params_from_file(
+                    checkpoint.initialize_params_from_file(
                     model=self.train_model,
                     weights_file=pretrained_model,
                     num_xpus=num_xpus,
@@ -381,26 +370,33 @@ class AnyExpTrainer(object):
         data_parallel_model.FinalizeAfterCheckpoint(self.train_model)
 
     def buildModelAndTrain(self, opts):
-        log.info('in buildModelAndTrain, trainer_input: {}'.format(str(opts)))
-        log.info("check type self: {}".format(type(self)))
-        log.info("check self dir: {}".format(dir(self)))
-        log.info("check self source: {}".format(self.__dict__))
-        log.info("check self get_input_dataset methods: {}".
-                 format(inspect.getsource(self.get_input_dataset)))
-        log.info("check self gen_input_builder_fun method: {}".
-                 format(inspect.getsource(self.gen_input_builder_fun)))
-        log.info("check self gen_forward_pass_builder_fun method: {}".
-                 format(inspect.getsource(self.gen_forward_pass_builder_fun)))
+        log.info(f'in buildModelAndTrain, trainer_input: {str(opts)}')
+        log.info(f"check type self: {type(self)}")
+        log.info(f"check self dir: {dir(self)}")
+        log.info(f"check self source: {self.__dict__}")
+        log.info(
+            f"check self get_input_dataset methods: {inspect.getsource(self.get_input_dataset)}"
+        )
+        log.info(
+            f"check self gen_input_builder_fun method: {inspect.getsource(self.gen_input_builder_fun)}"
+        )
+        log.info(
+            f"check self gen_forward_pass_builder_fun method: {inspect.getsource(self.gen_forward_pass_builder_fun)}"
+        )
         if self.gen_param_update_builder_fun is not None:
-            log.info("check self gen_param_update_builder_fun method: {}".
-                     format(inspect.getsource(self.gen_param_update_builder_fun)))
+            log.info(
+                f"check self gen_param_update_builder_fun method: {inspect.getsource(self.gen_param_update_builder_fun)}"
+            )
         else:
-            log.info("check self gen_optimizer_fun method: {}".
-                     format(inspect.getsource(self.gen_optimizer_fun)))
-        log.info("check self assembleAllOutputs method: {}".
-                 format(inspect.getsource(self.assembleAllOutputs)))
-        log.info("check self prep_data_parallel_models method: {}".
-                 format(inspect.getsource(self.prep_data_parallel_models)))
+            log.info(
+                f"check self gen_optimizer_fun method: {inspect.getsource(self.gen_optimizer_fun)}"
+            )
+        log.info(
+            f"check self assembleAllOutputs method: {inspect.getsource(self.assembleAllOutputs)}"
+        )
+        log.info(
+            f"check self prep_data_parallel_models method: {inspect.getsource(self.prep_data_parallel_models)}"
+        )
 
         self.get_model_input_fun()
 
@@ -414,7 +410,7 @@ class AnyExpTrainer(object):
 
         for epoch in self.list_of_epochs():
 
-            log.info("start training epoch {}".format(epoch))
+            log.info(f"start training epoch {epoch}")
 
             self.fun_per_epoch_b4RunNet(epoch)
 
@@ -461,22 +457,18 @@ class AnyExpTrainer(object):
                             metric['calculator'].Add()
                     self.test_loop_end_time = time.time()
                     self.sec_per_test_loop = \
-                        self.test_loop_end_time - self.test_loop_start_time
+                            self.test_loop_end_time - self.test_loop_start_time
 
                     for metric in self.metrics.values():
                         if metric['is_train']:
                             continue
                         metric['output'].append(metric['calculator'].Compute())
 
-                    logStr = 'epoch:{}/{} iter:{}/{} secs_per_train:{} '.format(
-                        self.fract_epoch, self.opts['epoch_iter']['num_epochs'],
-                        epoch_iter, self.epoch_iterations, secs_per_train)
-                    logStr += 'samples_per_sec:{} loop {} tests takes {} sec'.format(
-                        samples_per_sec, opts['epoch_iter']['num_test_iter'],
-                        self.sec_per_test_loop)
+                    logStr = f"epoch:{self.fract_epoch}/{self.opts['epoch_iter']['num_epochs']} iter:{epoch_iter}/{self.epoch_iterations} secs_per_train:{secs_per_train} "
+                    logStr += f"samples_per_sec:{samples_per_sec} loop {opts['epoch_iter']['num_test_iter']} tests takes {self.sec_per_test_loop} sec"
                     for metric, value in self.metrics.items():
-                        logStr += ' {}:{} '.format(metric, value['output'][-1])
-                    log.info('Iter Stats: {}'.format(logStr))
+                        logStr += f" {metric}:{value['output'][-1]} "
+                    log.info(f'Iter Stats: {logStr}')
 
                 self.fun_per_iter_aftRunNetAftTest(epoch, epoch_iter)
 

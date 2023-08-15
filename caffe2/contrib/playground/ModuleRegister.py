@@ -14,22 +14,21 @@ MODULE_MAPS = []
 
 def registerModuleMap(module_map):
     MODULE_MAPS.append(module_map)
-    log.info("ModuleRegister get modules from  ModuleMap content: {}".
-             format(inspect.getsource(module_map)))
+    log.info(
+        f"ModuleRegister get modules from  ModuleMap content: {inspect.getsource(module_map)}"
+    )
 
 
 def constructTrainerClass(myTrainerClass, opts):
 
-    log.info("ModuleRegister, myTrainerClass name is {}".
-             format(myTrainerClass.__name__))
-    log.info("ModuleRegister, myTrainerClass type is {}".
-             format(type(myTrainerClass)))
-    log.info("ModuleRegister, myTrainerClass dir is {}".
-             format(dir(myTrainerClass)))
+    log.info(f"ModuleRegister, myTrainerClass name is {myTrainerClass.__name__}")
+    log.info(f"ModuleRegister, myTrainerClass type is {type(myTrainerClass)}")
+    log.info(f"ModuleRegister, myTrainerClass dir is {dir(myTrainerClass)}")
 
     myInitializeModelModule = getModule(opts['model']['model_name_py'])
-    log.info("ModuleRegister, myInitializeModelModule dir is {}".
-             format(dir(myInitializeModelModule)))
+    log.info(
+        f"ModuleRegister, myInitializeModelModule dir is {dir(myInitializeModelModule)}"
+    )
 
     myTrainerClass.init_model = myInitializeModelModule.init_model
     myTrainerClass.run_training_net = myInitializeModelModule.run_training_net
@@ -39,8 +38,9 @@ def constructTrainerClass(myTrainerClass, opts):
         myInitializeModelModule.fun_per_epoch_b4RunNet
 
     myInputModule = getModule(opts['input']['input_name_py'])
-    log.info("ModuleRegister, myInputModule {} dir is {}".
-             format(opts['input']['input_name_py'], myInputModule.__name__))
+    log.info(
+        f"ModuleRegister, myInputModule {opts['input']['input_name_py']} dir is {myInputModule.__name__}"
+    )
 
     # Override input methods of the myTrainerClass class
     myTrainerClass.get_input_dataset = myInputModule.get_input_dataset
@@ -70,8 +70,7 @@ def constructTrainerClass(myTrainerClass, opts):
     # override output module
     myOutputModule = getModule(opts['output']['gen_output_py'])
 
-    log.info("ModuleRegister, myOutputModule is {}".
-             format(myOutputModule.__name__))
+    log.info(f"ModuleRegister, myOutputModule is {myOutputModule.__name__}")
     myTrainerClass.fun_conclude_operator = myOutputModule.fun_conclude_operator
     myTrainerClass.assembleAllOutputs = myOutputModule.assembleAllOutputs
 
@@ -79,32 +78,35 @@ def constructTrainerClass(myTrainerClass, opts):
 
 
 def overrideAdditionalMethods(myTrainerClass, opts):
-    log.info("B4 additional override myTrainerClass source {}".
-        format(inspect.getsource(myTrainerClass)))
+    log.info(
+        f"B4 additional override myTrainerClass source {inspect.getsource(myTrainerClass)}"
+    )
     # override any additional modules
     myAdditionalOverride = getModule(opts['model']['additional_override_py'])
     if myAdditionalOverride is not None:
         for funcName, funcValue in inspect.getmembers(myAdditionalOverride,
                                                       inspect.isfunction):
             setattr(myTrainerClass, funcName, funcValue)
-    log.info("Aft additional override myTrainerClass's source {}".
-        format(inspect.getsource(myTrainerClass)))
+    log.info(
+        f"Aft additional override myTrainerClass's source {inspect.getsource(myTrainerClass)}"
+    )
     return myTrainerClass
 
 
 def getModule(moduleName):
-    log.info("get module {} from MODULE_MAPS content {}".format(moduleName, str(MODULE_MAPS)))
+    log.info(
+        f"get module {moduleName} from MODULE_MAPS content {str(MODULE_MAPS)}"
+    )
     myModule = None
     for ModuleMap in MODULE_MAPS:
-        log.info("iterate through MODULE_MAPS content {}".
-                 format(str(ModuleMap)))
+        log.info(f"iterate through MODULE_MAPS content {str(ModuleMap)}")
         for name, obj in inspect.getmembers(ModuleMap):
-            log.info("iterate through MODULE_MAPS a name {}".format(str(name)))
+            log.info(f"iterate through MODULE_MAPS a name {str(name)}")
             if name == moduleName:
-                log.info("AnyExp get module {} with source:{}".
-                         format(moduleName, inspect.getsource(obj)))
-                myModule = obj
-                return myModule
+                log.info(
+                    f"AnyExp get module {moduleName} with source:{inspect.getsource(obj)}"
+                )
+                return obj
     return None
 
 
@@ -113,8 +115,8 @@ def getClassFromModule(moduleName, className):
     for ModuleMap in MODULE_MAPS:
         for name, obj in inspect.getmembers(ModuleMap):
             if name == moduleName:
-                log.info("ModuleRegistry from module {} get class {} of source:{}".
-                         format(moduleName, className, inspect.getsource(obj)))
-                myClass = getattr(obj, className)
-                return myClass
+                log.info(
+                    f"ModuleRegistry from module {moduleName} get class {className} of source:{inspect.getsource(obj)}"
+                )
+                return getattr(obj, className)
     return None

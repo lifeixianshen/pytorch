@@ -24,14 +24,13 @@ def NeedAll(op, g_output):
     """A sanity check to make sure that all the gradient are given."""
     for name, g in zip(op.output, g_output):
         if g is None:
-            raise RuntimeError(
-                'Need gradient for "%s" but it is not provided.' % name)
+            raise RuntimeError(f'Need gradient for "{name}" but it is not provided.')
     return g_output
 
 
 def GIS(op):
     """A test util function to generate the gradient name for input."""
-    return [s + '_grad' for s in op.input]
+    return [f'{s}_grad' for s in op.input]
 
 
 def CopyDeviceOption(op, src_op):
@@ -78,10 +77,7 @@ def AddUseInputGradient(op, g_output):
 
 @GradientRegistry.RegisterGradient('Nogradient')
 def AddNogradient(op, g_output):
-    return (
-        [],
-        [None for s in op.input]
-    )
+    return [], [None for _ in op.input]
 
 
 class TestGradientCalculation(test_util.TestCase):
@@ -181,7 +177,6 @@ class TestGradientCalculation(test_util.TestCase):
         except RuntimeError as e:
             print(e)
             self.assertTrue("version" in str(e))
-            pass
 
     def testUseOutput(self):
         operators = [
@@ -452,7 +447,7 @@ class TestGradientCalculation(test_util.TestCase):
         gradients, _ = GradientRegistry.GetBackwardPass(
             operators, {'out': 'out_grad'})
         for s in gradients:
-            print(str(s))
+            print(s)
         self.assertOperatorListEqual(gradients, desired_grad_operators)
 
     def testGradientMappingUsingSumOp(self):
@@ -467,7 +462,7 @@ class TestGradientCalculation(test_util.TestCase):
         gradient_ops, _ = GradientRegistry.GetBackwardPass(
             operators, {'loss': 'loss_grad'})
         for s in gradient_ops:
-            print(str(s))
+            print(s)
 
     def testGradientCalculationWithPrint(self):
         """Test a common use case where we have Print in the forward pass."""
@@ -488,7 +483,7 @@ class TestGradientCalculation(test_util.TestCase):
         gradient_ops, _ = GradientRegistry.GetBackwardPass(
             operators, {'loss': 'loss_grad'})
         for s in gradient_ops:
-            print(str(s))
+            print(s)
         self.assertOperatorListEqual(gradient_ops, desired_grad_operators)
 
     def testStopGradient(self):
@@ -759,7 +754,7 @@ class TestGradientsAccumulationWithPassThroughGradients(test_util.TestCase):
         net.Softmax("x2", "x3")
         net.Sub(["x2", "x3"], "x4")
         input_to_grad = net.AddGradientOperators({"x4": "x4_grad"})
-        print(str(net.Proto()))
+        print(net.Proto())
         sum_op = net.Proto().op[-2]
         self.assertEqual(sum_op.input[0], "x2_grad")
         self.assertEqual(sum_op.input[1], "_x2_grad_autosplit_0")

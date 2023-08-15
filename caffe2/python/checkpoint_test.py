@@ -140,7 +140,7 @@ class TestCheckpoint(TestCase):
                 for node_id in range(num_nodes):
                     epoch = 5
                     node_name = 'trainer_%d' % node_id
-                    expected_db_name = tmpdir + '/' + node_name + '.5'
+                    expected_db_name = f'{tmpdir}/{node_name}.5'
                     self.assertEquals(
                         checkpoint.get_ckpt_db_name(node_name, epoch),
                         expected_db_name)

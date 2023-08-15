@@ -15,10 +15,7 @@ class TestDB(unittest.TestCase):
         handle, self.file_name = tempfile.mkstemp()
         os.close(handle)
         self.data = [
-            (
-                "key{}".format(i).encode("ascii"),
-                "value{}".format(i).encode("ascii")
-            )
+            (f"key{i}".encode("ascii"), f"value{i}".encode("ascii"))
             for i in range(1, 10)
         ]
 

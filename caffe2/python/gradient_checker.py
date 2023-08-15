@@ -13,7 +13,8 @@ from caffe2.proto import caffe2_pb2
 
 def getGradientForOp(op):
     return core.GradientRegistry.GetGradientForOp(
-        op, [s + '_grad' for s in op.output])
+        op, [f'{s}_grad' for s in op.output]
+    )
 
 
 def _get_grad_blob(grad_map, input_to_check):
@@ -37,16 +38,16 @@ def _get_grad_blob(grad_map, input_to_check):
 
 
 def _get_grad(net, outputs, outputs_with_grad, input_values, inputs_with_grads):
-    grad_net = net.Clone(net.Name() + "_copy")
+    grad_net = net.Clone(f"{net.Name()}_copy")
     grad_map = grad_net.AddGradientOperators(outputs_with_grad)
 
     for name, value in (input_values or {}).items():
         workspace.blobs[name] = value
 
     for input_to_check in inputs_with_grads:
-        assert input_to_check in grad_map, (
-            '{} has no gradient, cannot check net gradient.'.format(
-                input_to_check))
+        assert (
+            input_to_check in grad_map
+        ), f'{input_to_check} has no gradient, cannot check net gradient.'
         assert str(input_to_check) in workspace.blobs
 
     workspace.RunNetOnce(grad_net)
@@ -79,9 +80,7 @@ class NetGradientChecker(object):
         if print_net_images:
             for i, net in enumerate(nets):
                 png = net_drawer.GetPydotGraph(net).create_png()
-                with open("caffe2_net_forward_" + str(i) + net.Name() + ".png",
-                          'wb') \
-                        as f:
+                with open(f"caffe2_net_forward_{str(i)}{net.Name()}.png", 'wb') as f:
                     f.write(png)
 
         results = [
@@ -95,8 +94,7 @@ class NetGradientChecker(object):
             _, _, backward_nets = zip(*results)
             for i, net in enumerate(backward_nets):
                 png = net_drawer.GetPydotGraph(net).create_png()
-                with open("caffe2_net_" + str(i) + net.Name() + ".png", 'wb') \
-                        as f:
+                with open(f"caffe2_net_{str(i)}{net.Name()}.png", 'wb') as f:
                     f.write(png)
 
         first_net_results, first_net_grads, _ = results[0]
@@ -128,10 +126,7 @@ class NetGradientChecker(object):
         def GetLoss(new_value):
             workspace.blobs[input_to_check] = new_value
             workspace.RunNetOnce(full_net)
-            return sum([
-                workspace.blobs[output]
-                for output in outputs_with_grad
-            ]).sum()
+            return sum(workspace.blobs[output] for output in outputs_with_grad).sum()
 
         def GetValue(dim, delta):
             input_value = input_values[input_to_check].copy()
@@ -194,7 +189,7 @@ class GradientChecker:
             name = op.output[idx]
             arr = workspace.FetchBlob(name)
             loss += (arr**2).sum()
-            workspace.FeedBlob(name + '_grad', arr, self._device_option)
+            workspace.FeedBlob(f'{name}_grad', arr, self._device_option)
         loss /= 2.
         # Run gradient ops
         workspace.RunOperatorsOnce(grad_ops)
@@ -203,18 +198,25 @@ class GradientChecker:
             workspace.FeedBlob('zeros', np.zeros_like(x, dtype=np.float32))
             workspace.FeedBlob('ones', np.ones(1, dtype=np.float32))
             gv_cpu_op = core.CreateOperator(
-                'EnsureCPUOutput', grad_name.values, grad_name.values + '_cpu',
-                device_option=self._device_option
+                'EnsureCPUOutput',
+                grad_name.values,
+                f'{grad_name.values}_cpu',
+                device_option=self._device_option,
             )
             gi_cpu_op = core.CreateOperator(
-                'EnsureCPUOutput', grad_name.indices, grad_name.indices + '_cpu',
-                device_option=self._device_option
+                'EnsureCPUOutput',
+                grad_name.indices,
+                f'{grad_name.indices}_cpu',
+                device_option=self._device_option,
             )
             sparse_to_dense_op = core.CreateOperator(
                 'ScatterWeightedSum',
                 [
-                    'zeros', 'ones', grad_name.indices + '_cpu',
-                    grad_name.values + '_cpu', 'ones'
+                    'zeros',
+                    'ones',
+                    f'{grad_name.indices}_cpu',
+                    f'{grad_name.values}_cpu',
+                    'ones',
                 ],
                 'zeros',
             )
@@ -264,9 +266,9 @@ class GradientChecker:
             # hack.
             grad_ops, g_input = getGradientForOp(op)
 
-        
+
         _input_device_options = input_device_options or \
-            core.InferOpBlobDevicesAsDict(op)[0]
+                core.InferOpBlobDevicesAsDict(op)[0]
         # First, feed in the input.
         for i, arr in enumerate(inputs):
             workspace.FeedBlob(
@@ -283,9 +285,9 @@ class GradientChecker:
         grad_estimate = np.zeros_like(inputs[input_to_check])
         if grad_estimate.shape != grad.shape:
             raise Exception(
-                "Mismatched gradient shapes: estimated ({}), grad ({})".format(
-                    grad_estimate.shape, grad.shape))
-            
+                f"Mismatched gradient shapes: estimated ({grad_estimate.shape}), grad ({grad.shape})"
+            )
+
         dims_to_check = inputs[input_to_check].size
         for current_dim in range(dims_to_check):
             # Positive gradient

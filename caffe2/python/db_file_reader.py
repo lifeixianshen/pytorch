@@ -49,8 +49,8 @@ class DBFileReader(Reader):
     ):
         assert db_path is not None, "db_path can't be None."
         assert db_type in C.registered_dbs(), \
-            "db_type [{db_type}] is not available. \n" \
-            "Choose one of these: {registered_dbs}.".format(
+                "db_type [{db_type}] is not available. \n" \
+                "Choose one of these: {registered_dbs}.".format(
                 db_type=db_type,
                 registered_dbs=C.registered_dbs(),
         )
@@ -67,7 +67,7 @@ class DBFileReader(Reader):
         # Before self._init_reader_schema(...),
         # self.db_path and self.db_type are required to be set.
         super(DBFileReader, self).__init__(self._init_reader_schema(field_names))
-        self.ds = Dataset(self._schema, self.name + '_dataset')
+        self.ds = Dataset(self._schema, f'{self.name}_dataset')
         self.ds_reader = None
 
     def _init_name(self, name):
@@ -100,7 +100,7 @@ class DBFileReader(Reader):
             return from_column_list(field_names)
 
         assert os.path.exists(self.db_path), \
-            'db_path [{db_path}] does not exist'.format(db_path=self.db_path)
+                'db_path [{db_path}] does not exist'.format(db_path=self.db_path)
         with core.NameScope(self.name):
             # blob_prefix is for avoiding name conflict in workspace
             blob_prefix = scope.CurrentNameScope()
@@ -120,8 +120,7 @@ class DBFileReader(Reader):
             blob_name[len(blob_prefix):] for blob_name in workspace.Blobs()
             if blob_name.startswith(blob_prefix)
         ]
-        schema = from_column_list(col_names)
-        return schema
+        return from_column_list(col_names)
 
     def setup_ex(self, init_net, finish_net):
         """From the Dataset, create a _DatasetReader and setup a init_net.

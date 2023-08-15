@@ -754,11 +754,11 @@ def _CreateBarrierNet(model, init_net, name_prefix, timeout_sec):
     assert model._rendezvous['engine'] == 'GLOO', "Engine does not support barrier"
     comm_world = _CreateOrCloneCommonWorld(
         init_net,
-        name_prefix + "_barrier_cw",
+        f"{name_prefix}_barrier_cw",
         rendezvous=model._rendezvous,
         timeout_sec=timeout_sec,
     )
-    barrier_net = core.Net(name_prefix + "_barrier_net")
+    barrier_net = core.Net(f"{name_prefix}_barrier_net")
     barrier_net.Barrier(
         inputs=[comm_world],
         outputs=[],
@@ -786,10 +786,9 @@ def Synchronize(model, timeout_sec=_DEFAULT_BARRIER_NET_TIMEOUT_SEC):
         workspace.RunNetOnce(barrier_init_net)
         workspace.CreateNet(model._sync_barrier_net)
         model._sync_barrier_net_timeout = timeout_sec
-    assert model._sync_barrier_net_timeout == timeout_sec, \
-        "Must use fixed timeout, {} != {}".format(
-            model._sync_barrier_net_timeout, timeout_sec
-        )
+    assert (
+        model._sync_barrier_net_timeout == timeout_sec
+    ), f"Must use fixed timeout, {model._sync_barrier_net_timeout} != {timeout_sec}"
     log.info("Synchronize run barrier net.")
     workspace.RunNet(model._sync_barrier_net)
 
@@ -814,7 +813,7 @@ def ConvertNetForDevice(net, device=None):
 
     device_prefix = "gpu" if device.device_type == caffe2_pb2.CUDA else "cpu"
 
-    namescope = "{}_{}/".format(device_prefix, device.device_id)
+    namescope = f"{device_prefix}_{device.device_id}/"
     for op in mnet.Proto().op:
         if "RecurrentNetwork" in op.type:
             raise("RecurrentNetwork conversion not yet supported")
@@ -838,7 +837,7 @@ def _ForEachDevice(devices, f, device_type, device_prefix, scoped=False,
         device_opt = core.DeviceOption(device_type, device)
         with core.DeviceScope(device_opt):
             if scoped:
-                with core.NameScope("{}_{}".format(device_prefix, device)):
+                with core.NameScope(f"{device_prefix}_{device}"):
                     f(device, *args, **kwargs)
             else:
                 f(device, *args, **kwargs)
@@ -846,7 +845,7 @@ def _ForEachDevice(devices, f, device_type, device_prefix, scoped=False,
 
 def _AddGradientOperators(devices, model, losses_by_gpu):
     def create_grad(lossp):
-        return model.ConstantFill(lossp, str(lossp) + "_grad", value=1.0)
+        return model.ConstantFill(lossp, f"{str(lossp)}_grad", value=1.0)
 
     loss_grad = {}
     # Explicitly need to create gradients on each GPU
@@ -866,7 +865,7 @@ def ExtractPredictorNet(model, inputs, outputs, device):
     net.
     '''
     master_device = model._devices[0]
-    prefix = "{}_{}/".format(model._device_prefix, master_device)
+    prefix = f"{model._device_prefix}_{master_device}/"
     prefix_inputs = [prefix + str(b) for b in inputs]
     prefix_outputs = [prefix + str(b) for b in outputs]
     (predictor_net, export_blobs) = model_helper.ExtractPredictorNet(
@@ -874,10 +873,7 @@ def ExtractPredictorNet(model, inputs, outputs, device):
         input_blobs=prefix_inputs,
         output_blobs=prefix_outputs,
         device=device,
-        renames={
-            a: b
-            for (a, b) in zip(prefix_inputs + prefix_outputs, inputs + outputs)
-        },
+        renames=dict(zip(prefix_inputs + prefix_outputs, inputs + outputs)),
     )
 
     return (predictor_net, export_blobs)
@@ -892,16 +888,15 @@ def GetCheckpointParams(model):
     first_gpu_blobs = {
         b
         for b in all_blobs
-        if str(b)
-        .startswith("{}_{}/".format(model._device_prefix, model._devices[0]))
+        if str(b).startswith(f"{model._device_prefix}_{model._devices[0]}/")
     }
 
     # Add iteration blobs that do not have namescope separately, since
     # it is important to checkpoint iteration counter
     iteration_blobs = set()
     for op in model.net.Proto().op:
-        if op.type == 'Iter' or op.type == 'AtomicIter':
-            if not op.output[0].startswith("{}_".format(model._device_prefix)):
+        if not op.output[0].startswith(f"{model._device_prefix}_"):
+            if op.type in ['Iter', 'AtomicIter']:
                 iteration_blobs.add(op.output[0])
 
     return first_gpu_blobs.union(iteration_blobs)
@@ -926,13 +921,11 @@ def FinalizeAfterCheckpoint(model, blobs=None, cpu_mode=False):
         for name in uniq_blob_names:
             if name not in model._device_grouped_blobs:
                 grouped = {
-                    d:
-                    core.BlobReference("{}_{}{}{}".format(
-                        model._device_prefix,
-                        d,
-                        scope._NAMESCOPE_SEPARATOR,
-                        name)
-                    ) for d in devices}
+                    d: core.BlobReference(
+                        f"{model._device_prefix}_{d}{scope._NAMESCOPE_SEPARATOR}{name}"
+                    )
+                    for d in devices
+                }
                 model._device_grouped_blobs[name] = grouped
 
         model._checkpoint_net = core.Net("checkpoint_sync_net")
@@ -968,22 +961,19 @@ def GetLearningRateBlobNames(model):
     '''
     Returns a list of learning rates blob names used in the optimizer.
     '''
-    if model._optimizer is not None:
-        if model._device_type == caffe2_pb2.CPU:
-            return [model._optimizer.get_cpu_blob_name('lr')]
-        elif model._device_type == caffe2_pb2.CUDA:
-            return [model._optimizer.get_gpu_blob_name('lr', gpu, '')
-                    for gpu in model._devices]
-        else:
-            raise Exception(
-                "Unsupported device type : {}".format(model._device_type)
-            )
+    if model._optimizer is None:
+        return [
+            op.output(0)
+            for op in model.net.Proto().op
+            if op.type == "LearningRate"
+        ]
+    if model._device_type == caffe2_pb2.CPU:
+        return [model._optimizer.get_cpu_blob_name('lr')]
+    elif model._device_type == caffe2_pb2.CUDA:
+        return [model._optimizer.get_gpu_blob_name('lr', gpu, '')
+                for gpu in model._devices]
     else:
-        lr_blob_names = []
-        for op in model.net.Proto().op:
-            if op.type == "LearningRate":
-                lr_blob_names.append(op.output(0))
-        return lr_blob_names
+        raise Exception(f"Unsupported device type : {model._device_type}")
 
 
 def _Broadcast(devices, model, net, param, use_nccl=False):
@@ -1111,10 +1101,11 @@ def AddBlobSync(model, blobs, net=None):
         return
     net = model.net if net is None else net
     for b in blobs:
-        assert not b.startswith(model._device_prefix), \
-            "Provide unprefixed blob name: {}".format(b)
+        assert not b.startswith(
+            model._device_prefix
+        ), f"Provide unprefixed blob name: {b}"
         model._device_grouped_blobs[b] = {
-            d: core.BlobReference("{}_{}/{}".format(model._device_prefix, d, b))
+            d: core.BlobReference(f"{model._device_prefix}_{d}/{b}")
             for d in model._devices
         }
 
@@ -1136,7 +1127,7 @@ def AddDistributedBlobSync(model, blobs):
     synth_name = "_".join([str(b) for b in blobs])
     comm_world = _CreateOrCloneCommonWorld(
         model.param_init_net,
-        "blob_sync_cw_" + synth_name,
+        f"blob_sync_cw_{synth_name}",
         rendezvous=model._rendezvous,
     )
 
@@ -1194,10 +1185,7 @@ def _SyncAllParamsDistributed(
         else:
             # Copy between GPU and CPU
             with core.DeviceScope(device_opt):
-                param_cpu = net.CopyGPUToCPU(
-                    master_param,
-                    str(master_param) + "cpu"
-                )
+                param_cpu = net.CopyGPUToCPU(master_param, f"{str(master_param)}cpu")
             with core.DeviceScope(cpu_device_opt):
                 broadcast([param_cpu])
             with core.DeviceScope(device_opt):
@@ -1235,7 +1223,7 @@ def _AllReduceBlobs(blob_names, devices, model, net, rendezvous, use_nccl,
 
 def _PruneParametersForSharing(model):
     assert model._shared_model
-    master_prefix = "{}_{}/".format(model._device_prefix, model._devices[0])
+    master_prefix = f"{model._device_prefix}_{model._devices[0]}/"
 
     # Remove non-master parameters so that they will not receive parameter
     # update operators.
@@ -1309,7 +1297,7 @@ class CollectivesConcurrencyControl(object):
         if len(self.common_worlds) < self.max_concurrent_context:
             common_world = _CreateOrCloneCommonWorld(
                 self.param_init_net,
-                "{}_{}_cw".format(self.name, current_slot),
+                f"{self.name}_{current_slot}_cw",
                 rendezvous=self.rendezvous,
             )
             self.common_worlds.append(common_world)
@@ -1355,7 +1343,7 @@ def _AllReduceBlobsDistributed(
 
         # Remark: NCCLReduce does not support in-place modifications
         # so we need a temporary blob
-        reduced_blob = str(master_blob) + "_red"
+        reduced_blob = f"{str(master_blob)}_red"
 
         def allreduce(blobs, **kwargs):
             with core.DeviceScope(reducing_device_opt):
@@ -1420,9 +1408,9 @@ def _AllReduceBlobsSingleHost(blob_names, devices, model, net, use_nccl):
         if len(blobs_group) == 1:
             # Non-reducible
             continue
-        assert len(blobs_group) == len(devices), \
-            "Each GPU from {}, should have a copy of {}.".format(
-                devices, blob_name)
+        assert len(blobs_group) == len(
+            devices
+        ), f"Each GPU from {devices}, should have a copy of {blob_name}."
 
         if _IsGPUBlob(model, blob_name):
             with core.DeviceScope(master_device_opt):
@@ -1435,25 +1423,24 @@ def _AllReduceBlobsSingleHost(blob_names, devices, model, net, use_nccl):
 
                 else:
                     # Sparse gradients: all-gather for indices and values
-                    master_ns = "{}_{}".format(model._device_prefix, devices[0])
+                    master_ns = f"{model._device_prefix}_{devices[0]}"
                     '''
                     Skip if we have already copied concatenated indices
                     to the indices of GradientSlice. This happens when two
                     or more grad blobs are gathered with the same indices
                     blob
                     '''
-                    skip_idx_concat = False
-                    for g in blobs_group:
-                        if g.indices in concatenated_idx:
-                            skip_idx_concat = True
-
+                    skip_idx_concat = any(g.indices in concatenated_idx for g in blobs_group)
                     if not skip_idx_concat:
                         grad_idx_concat, _ = net.Concat(
                             [g.indices for g in blobs_group],
-                            ["{}/{}_index_concat".format(master_ns, blob_name),
-                             "{}/{}_index_splitinfo".format(master_ns, blob_name)],
+                            [
+                                f"{master_ns}/{blob_name}_index_concat",
+                                f"{master_ns}/{blob_name}_index_splitinfo",
+                            ],
                             axis=0,
-                            name="note:data_parallel_model")
+                            name="note:data_parallel_model",
+                        )
 
                         for gpu, g in viewitems(model._device_grouped_blobs[blob_name]):
                             device_opt = core.DeviceOption(model._device_type, gpu)
@@ -1463,9 +1450,13 @@ def _AllReduceBlobsSingleHost(blob_names, devices, model, net, use_nccl):
 
                     grad_val_concat, _ = net.Concat(
                         [g.values for g in blobs_group],
-                        ["{}/{}_val_concat".format(master_ns, blob_name),
-                         "{}/{}_val_splitinfo".format(master_ns, blob_name)],
-                        axis=0, name="note:data_parallel_model")
+                        [
+                            f"{master_ns}/{blob_name}_val_concat",
+                            f"{master_ns}/{blob_name}_val_splitinfo",
+                        ],
+                        axis=0,
+                        name="note:data_parallel_model",
+                    )
 
                     for gpu, g in viewitems(model._device_grouped_blobs[blob_name]):
                         device_opt = core.DeviceOption(model._device_type, gpu)
@@ -1524,7 +1515,7 @@ def _GetReverseOrderedGrads(model):
 def stripBlobName(param):
     # Format is "a/b/c/d" -> "b/c/d"
     if isinstance(param, core.GradientSlice):
-        return stripBlobName(param.indices) + ":" + stripBlobName(param.values)
+        return f"{stripBlobName(param.indices)}:{stripBlobName(param.values)}"
     else:
         name = str(param)
     return name[name.index(scope._NAMESCOPE_SEPARATOR) + 1:]
@@ -1537,7 +1528,7 @@ def _AnalyzeOperators(model):
     for op in model.Proto().op:
         if "NCCL" in op.type or "Copy" in op.type or "Concat" in op.type:
             continue
-        if "Sum" == op.type and op.name == "dpm":
+        if op.type == "Sum" and op.name == "dpm":
             continue
         if "Allreduce" in op.type and "GLOO" in op.engine:
             continue
@@ -1549,17 +1540,13 @@ def _AnalyzeOperators(model):
         if op_dev.device_type != caffe2_pb2.CUDA:
             continue
 
-        namescope = "{}_{}/".format(model._device_prefix, op_gpu)
+        namescope = f"{model._device_prefix}_{op_gpu}/"
         for inp in list(op.input) + list(op.output):
-            if inp.startswith("{}_".format(model._device_prefix)
-                             ) and not inp.startswith(namescope):
+            if inp.startswith(
+                f"{model._device_prefix}_"
+            ) and not inp.startswith(namescope):
                 raise Exception(
-                    "Blob {} of op {}, should have namescope {}. Op: {}".format(
-                        inp,
-                        op.type,
-                        "{}_{}/".format(model._device_prefix, op_gpu),
-                        str(op),
-                    )
+                    f"Blob {inp} of op {op.type}, should have namescope {model._device_prefix}_{op_gpu}/. Op: {str(op)}"
                 )
 
 
@@ -1588,15 +1575,11 @@ def _InferBlobDevice(model):
     model._blob_to_device = mapping
 
 def _IsGPUBlob(model, blob_name):
-    if blob_name in model._blob_to_device:
-        return model._blob_to_device[blob_name].device_type == caffe2_pb2.CUDA
-    else:
-        blob_name = "{}_{}/{}".format(
-            model._device_prefix, model._devices[0], blob_name
-        )
-        if blob_name not in model._blob_to_device:
-            return model._device_type == caffe2_pb2.CUDA
-        return model._blob_to_device[blob_name].device_type == caffe2_pb2.CUDA
+    if blob_name not in model._blob_to_device:
+        blob_name = f"{model._device_prefix}_{model._devices[0]}/{blob_name}"
+    if blob_name not in model._blob_to_device:
+        return model._device_type == caffe2_pb2.CUDA
+    return model._blob_to_device[blob_name].device_type == caffe2_pb2.CUDA
 
 
 def _GroupByDevice(model, devices, params, non_data_params):
@@ -1609,23 +1592,26 @@ def _GroupByDevice(model, devices, params, non_data_params):
     params = params[len(non_data_params):]
 
     for _i, p in enumerate(params):
-        assert isinstance(p, core.BlobReference) or \
-            isinstance(p, core.GradientSlice), \
-            "Param {} is not BlobReference or GradientSlice".format(p)
+        assert isinstance(
+            p, (core.BlobReference, core.GradientSlice)
+        ), f"Param {p} is not BlobReference or GradientSlice"
 
         name = stripBlobName(p)
         gpuid = None
 
         if isinstance(p, core.BlobReference):
             gpuid = int(p.GetNameScope().split("_")[1].split("/")[0])
-            assert "{}_{}/".format(model._device_prefix, gpuid) in p.GetNameScope(),\
-                "Param {} expected to have namescope '{}_{}'".format(str(p), model._device_prefix, gpuid)
+            assert (
+                f"{model._device_prefix}_{gpuid}/" in p.GetNameScope()
+            ), f"Param {str(p)} expected to have namescope '{model._device_prefix}_{gpuid}'"
         else:
             gpuid = int(p.indices.GetNameScope().split("_")[1].split("/")[0])
-            assert "{}_{}/".format(model._device_prefix, gpuid) in p.indices.GetNameScope(),\
-                "Indices {} expected to have namescope '{}_{}'".format(str(p), model._device_prefix, gpuid)
-            assert "{}_{}/".format(model._device_prefix, gpuid) in p.values.GetNameScope(),\
-                "Values {} expected to have namescope '{}_{}'".format(str(p), model._device_prefix, gpuid)
+            assert (
+                f"{model._device_prefix}_{gpuid}/" in p.indices.GetNameScope()
+            ), f"Indices {str(p)} expected to have namescope '{model._device_prefix}_{gpuid}'"
+            assert (
+                f"{model._device_prefix}_{gpuid}/" in p.values.GetNameScope()
+            ), f"Values {str(p)} expected to have namescope '{model._device_prefix}_{gpuid}'"
 
         if name not in grouped:
             grouped[name] = {}
@@ -1637,14 +1623,9 @@ def _GroupByDevice(model, devices, params, non_data_params):
 def _ValidateParams(params):
     set_params = set(params)
     if len(params) > len(set_params):
-        dupes = []
         sp = sorted(params)
-        for j, p in enumerate(sp):
-            if j > 0 and sp[j - 1] == p:
-                dupes.append(p)
-
-        assert len(params) == len(set_params), \
-            "Duplicate entries in params: {}".format(dupes)
+        dupes = [p for j, p in enumerate(sp) if j > 0 and sp[j - 1] == p]
+        assert len(params) == len(set_params), f"Duplicate entries in params: {dupes}"
 
 
 def _ComputeBlobsToSync(model):
@@ -1694,7 +1675,7 @@ def _OptimizeGradientMemorySimple(model, losses_by_gpu, devices):
     log.warning("------- DEPRECATED API, please use " +
                    "data_parallel_model.OptimizeGradientMemory() ----- ")
     for device in devices:
-        namescope = "{}_{}/".format(model._device_prefix, device)
+        namescope = f"{model._device_prefix}_{device}/"
         model.net._net = memonger.share_grad_blobs(
             model.net,
             losses_by_gpu[device],
@@ -1709,9 +1690,7 @@ def _AddDynamicMemoryOptimization(model, blobs_to_keep, devices):
     if blobs_to_keep is not None:
         for device in devices:
             for blob_name in blobs_to_keep:
-                blobs_to_keep_all_devices.add(
-                    "{}_{}/{}".format(model._device_prefix, device, blob_name)
-                )
+                blobs_to_keep_all_devices.add(f"{model._device_prefix}_{device}/{blob_name}")
 
     if model._rendezvous is not None:
         # GLOO operators expect the tensor addresses to remain same over
@@ -1744,8 +1723,7 @@ def OptimizeGradientMemory(model,
         input_shapes_all_devices = {}
         for b, shp in viewitems(input_shapes):
             for d in model._devices:
-                input_shapes_all_devices["{}_{}/{}".
-                                         format(model._device_prefix, d, b)] = shp
+                input_shapes_all_devices[f"{model._device_prefix}_{d}/{b}"] = shp
 
         (shapes, types) = workspace.InferShapesAndTypes(
             [model.param_init_net, model.net],
@@ -1755,8 +1733,8 @@ def OptimizeGradientMemory(model,
         shapes = None
 
     for device in model._devices:
-        namescope = "{}_{}/".format(model._device_prefix, device)
-        excluded_blobs_by_device = set(namescope + b for b in excluded_blobs)
+        namescope = f"{model._device_prefix}_{device}/"
+        excluded_blobs_by_device = {namescope + b for b in excluded_blobs}
         model.net._net = memonger.share_grad_blobs(
             model.net,
             model._losses_by_gpu[device],
@@ -1788,12 +1766,7 @@ def _CreateOrCloneCommonWorld(
         if op.type != "CreateCommonWorld":
             continue
 
-        # Find common world timeout
-        op_timeout_ms = -1
-        for arg in op.arg:
-            if arg.name == 'timeout_ms':
-                op_timeout_ms = arg.i
-                break
+        op_timeout_ms = next((arg.i for arg in op.arg if arg.name == 'timeout_ms'), -1)
         if op_timeout_ms != timeout_ms:
             continue
 
@@ -1803,35 +1776,32 @@ def _CreateOrCloneCommonWorld(
         break
 
     if name is None:
-        name = "{}_op".format(common_world_blob)
+        name = f"{common_world_blob}_op"
 
     if existing is not None:
-        comm_world = net.CloneCommonWorld(
+        return net.CloneCommonWorld(
             [existing],
             common_world_blob,
             name=name,
             engine=rendezvous['engine'],
         )
-    else:
-        kwargs=dict()
-        if 'transport' in rendezvous:
-            kwargs['transport'] = rendezvous['transport']
-        if 'interface' in rendezvous:
-            kwargs['interface'] = rendezvous['interface']
-        if 'mpi_rendezvous' in rendezvous:
-            kwargs['mpi_rendezvous'] = rendezvous['mpi_rendezvous']
-        comm_world = net.CreateCommonWorld(
-            rendezvous['kv_handler'] or [],
-            common_world_blob,
-            name=name,
-            size=rendezvous['num_shards'],
-            rank=rendezvous['shard_id'],
-            engine=rendezvous['engine'],
-            timeout_ms=timeout_ms,
-            **kwargs
-        )
-
-    return comm_world
+    kwargs = {}
+    if 'transport' in rendezvous:
+        kwargs['transport'] = rendezvous['transport']
+    if 'interface' in rendezvous:
+        kwargs['interface'] = rendezvous['interface']
+    if 'mpi_rendezvous' in rendezvous:
+        kwargs['mpi_rendezvous'] = rendezvous['mpi_rendezvous']
+    return net.CreateCommonWorld(
+        rendezvous['kv_handler'] or [],
+        common_world_blob,
+        name=name,
+        size=rendezvous['num_shards'],
+        rank=rendezvous['shard_id'],
+        engine=rendezvous['engine'],
+        timeout_ms=timeout_ms,
+        **kwargs
+    )
 
 
 def _RunComparison(model, blob_name, device=None):
@@ -1848,25 +1818,25 @@ def _RunComparison(model, blob_name, device=None):
 
         comparison_net = core.Net("allcompare_net")
 
-        kwargs=dict()
+        kwargs = {}
         if 'mpi_rendezvous' in rendezvous:
             kwargs['mpi_rendezvous'] = rendezvous['mpi_rendezvous']
         comm_world = comparison_net.CreateCommonWorld(
             rendezvous['kv_handler'] or [],
             "initial_sync",
-            name=model.net.Proto().name + ".cw_master_select",
+            name=f"{model.net.Proto().name}.cw_master_select",
             size=rendezvous['num_shards'],
             rank=rendezvous['shard_id'],
             engine=rendezvous['engine'],
-            **kwargs
+            **kwargs,
         )
 
-        blob_name_checksum = blob_name + "_checksum"
+        blob_name_checksum = f"{blob_name}_checksum"
         comparison_net.SumSqrElements(
             [blob_name], [blob_name_checksum], average=False
         )
 
-        blob_name_gather = blob_name + "_gather"
+        blob_name_gather = f"{blob_name}_gather"
         comparison_net.Mul(
             inputs=["compare_arr", blob_name_checksum],
             outputs=blob_name_gather,
@@ -1884,8 +1854,9 @@ def _RunComparison(model, blob_name, device=None):
 
         baseline = gather_arr[0]
         for i in range(rendezvous['num_shards']):
-            assert gather_arr[i] == baseline, \
-                "allcompare failed on shard {}.".format(rendezvous['shard_id'])
+            assert (
+                gather_arr[i] == baseline
+            ), f"allcompare failed on shard {rendezvous['shard_id']}."
 
         return True
 
@@ -1916,8 +1887,7 @@ def _InterleaveOps(model):
                 tp = ops[d][j].type
             new_ops.append(ops[d][j])
             # Sanity
-            assert ops[d][j].type == tp, \
-                "Type mismatch {} / {}".format(tp, ops[d][j].type)
+            assert ops[d][j].type == tp, f"Type mismatch {tp} / {ops[d][j].type}"
 
     del model.net.Proto().op[:]
     model.net.Proto().op.extend(new_ops)
@@ -1951,24 +1921,26 @@ def _CPUInterDeviceBatchNormalization(model):
         destination_blobs: list of blobs to copy the result to
         """
         added_ops = []
-        result_blob = "cpu_0/" + param + "_combined"
+        result_blob = f"cpu_0/{param}_combined"
         added_ops.append(core.CreateOperator("Sum", input_blobs, result_blob))
         for blob in destination_blobs:
             added_ops.append(core.CreateOperator("Copy", result_blob, blob))
         return added_ops
 
     for op in orig_ops:
-        if op.type != 'SpatialBN' and op.type != 'SpatialBNGradient':
+        if op.type not in ['SpatialBN', 'SpatialBNGradient']:
             if spatial_bn_phase:
                 new_ops.extend(injected_ops)
                 new_ops.append(
-                    core.CreateOperator("Sum",
-                                        sums_blobs,
-                                        input_blob_name + "_sums_combined"))
+                    core.CreateOperator(
+                        "Sum", sums_blobs, f"{input_blob_name}_sums_combined"
+                    )
+                )
                 new_ops.append(
-                    core.CreateOperator("Sum",
-                                        sumsq_blobs,
-                                        input_blob_name + "_sumsq_combined"))
+                    core.CreateOperator(
+                        "Sum", sumsq_blobs, f"{input_blob_name}_sumsq_combined"
+                    )
+                )
                 new_ops.extend(batch_norm_ops)
                 injected_ops = []
                 batch_norm_ops = []
@@ -2000,13 +1972,13 @@ def _CPUInterDeviceBatchNormalization(model):
             name = op.input[0]
             injected_ops.append(
                 core.CreateOperator(
-                    "ChannelStats",
-                    name,
-                    [name + "_sums", name + "_sumsq"]))
-            sums_blobs.append(name + "_sums")
-            sumsq_blobs.append(name + "_sumsq")
-            op.input.append(input_blob_name + "_sums_combined")
-            op.input.append(input_blob_name + "_sumsq_combined")
+                    "ChannelStats", name, [f"{name}_sums", f"{name}_sumsq"]
+                )
+            )
+            sums_blobs.append(f"{name}_sums")
+            sumsq_blobs.append(f"{name}_sumsq")
+            op.input.append(f"{input_blob_name}_sums_combined")
+            op.input.append(f"{input_blob_name}_sumsq_combined")
             op.arg.extend([utils.MakeArgument("num_batches", num_devices)])
             batch_norm_ops.append(op)
         elif op.type == 'SpatialBNGradient':
@@ -2094,19 +2066,23 @@ def _GPUInterDeviceBatchNormalization(model):
         return added_ops
 
     for op in orig_ops:
-        if op.type != 'SpatialBN' and op.type != 'SpatialBNGradient':
+        if op.type not in ['SpatialBN', 'SpatialBNGradient']:
             if spatial_bn_phase:
                 new_ops.extend(injected_ops)
-                new_ops.extend(_gpuReduce(
-                    stripBlobName(input_blob_name) + "_sums",
-                    num_devices,
-                    master_device,
-                ))
-                new_ops.extend(_gpuReduce(
-                    stripBlobName(input_blob_name) + "_sumsq",
-                    num_devices,
-                    master_device,
-                ))
+                new_ops.extend(
+                    _gpuReduce(
+                        f"{stripBlobName(input_blob_name)}_sums",
+                        num_devices,
+                        master_device,
+                    )
+                )
+                new_ops.extend(
+                    _gpuReduce(
+                        f"{stripBlobName(input_blob_name)}_sumsq",
+                        num_devices,
+                        master_device,
+                    )
+                )
                 new_ops.extend(batch_norm_ops)
                 injected_ops = []
                 batch_norm_ops = []
@@ -2148,12 +2124,14 @@ def _GPUInterDeviceBatchNormalization(model):
                 core.CreateOperator(
                     "ChannelStats",
                     name,
-                    [name + "_sums", name + "_sumsq"],
-                    device_option=device_option))
-            sums_blobs.append(name + "_sums")
-            sumsq_blobs.append(name + "_sumsq")
-            op.input.append(name + "_sums_combined")
-            op.input.append(name + "_sumsq_combined")
+                    [f"{name}_sums", f"{name}_sumsq"],
+                    device_option=device_option,
+                )
+            )
+            sums_blobs.append(f"{name}_sums")
+            sumsq_blobs.append(f"{name}_sumsq")
+            op.input.append(f"{name}_sums_combined")
+            op.input.append(f"{name}_sumsq_combined")
             op.arg.extend([utils.MakeArgument("num_batches", num_devices)])
             batch_norm_ops.append(op)
         elif op.type == 'SpatialBNGradient':

@@ -47,10 +47,9 @@ def parse_arguments(args, func_decl, func_name, func_return):
     python_default_inits = func_decl.get('python_default_init', {})
     is_out_fn = func_name.endswith('_out')
     if is_out_fn and func_decl.get('variants', []) not in [[], 'function', ['function']]:
-        raise RuntimeError("Native functions suffixed with _out MUST be declared with only the function variant; "
-                           "e.g., variants: function; otherwise you will tickle a Python argument binding bug "
-                           "(which usually manifests itself as the result variable being undefined.) "
-                           "The culprit was: {}".format(func_name))
+        raise RuntimeError(
+            f"Native functions suffixed with _out MUST be declared with only the function variant; e.g., variants: function; otherwise you will tickle a Python argument binding bug (which usually manifests itself as the result variable being undefined.) The culprit was: {func_name}"
+        )
     kwarg_only = False
 
     if len(args.strip()) == 0:
@@ -80,10 +79,9 @@ def parse_arguments(args, func_decl, func_name, func_return):
         typ = sanitize_types(t)
         assert len(typ) == 1
         argument_dict = {'type': typ[0].rstrip('?'), 'name': name, 'is_nullable': typ[0].endswith('?')}
-        match = re.match(r'IntList\[(\d+)\]', argument_dict['type'])
-        if match:
+        if match := re.match(r'IntList\[(\d+)\]', argument_dict['type']):
             argument_dict['type'] = 'IntList'
-            argument_dict['size'] = int(match.group(1))
+            argument_dict['size'] = int(match[1])
         if default is not None:
             argument_dict['default'] = default
         if python_default_init is not None:
@@ -100,10 +98,7 @@ def parse_arguments(args, func_decl, func_name, func_return):
 
 
 def has_sparse_dispatches(dispatches):
-    for dispatch in dispatches:
-        if 'Sparse' in dispatch:
-            return True
-    return False
+    return any('Sparse' in dispatch for dispatch in dispatches)
 
 
 def parse_native_yaml(path):
@@ -129,7 +124,9 @@ def run(paths):
                 return_type = list(func.get('return', return_type))
                 arguments = parse_arguments(arguments, func, declaration['name'], return_type)
                 output_arguments = [x for x in arguments if x.get('output')]
-                declaration['return'] = return_type if len(output_arguments) == 0 else output_arguments
+                declaration['return'] = (
+                    return_type if not output_arguments else output_arguments
+                )
                 declaration['variants'] = func.get('variants', ['function'])
                 declaration['requires_tensor'] = func.get('requires_tensor', False)
                 declaration['cpu_half'] = func.get('cpu_half', False)

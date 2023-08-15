@@ -178,10 +178,7 @@ class TestControl(test_util.TestCase):
         self.IfCondTest(self.false_cond_net_, 0, True)
 
     def IfElseCondTest(self, cond_net, cond_value, expect, cond_on_blob):
-        if cond_value:
-            run_net = self.cnt_net_
-        else:
-            run_net = self.cnt_2_net_
+        run_net = self.cnt_net_ if cond_value else self.cnt_2_net_
         if cond_on_blob:
             step = control.Do(
                 'if-else-all',
@@ -231,10 +228,7 @@ class TestControl(test_util.TestCase):
         self.IfNotCondTest(self.false_cond_net_, 1, True)
 
     def IfNotElseCondTest(self, cond_net, cond_value, expect, cond_on_blob):
-        if cond_value:
-            run_net = self.cnt_2_net_
-        else:
-            run_net = self.cnt_net_
+        run_net = self.cnt_2_net_ if cond_value else self.cnt_net_
         if cond_on_blob:
             step = control.Do(
                 'if-not-else',

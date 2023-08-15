@@ -21,11 +21,9 @@ def feed_inputs(inputs):
 def assert_proto_equals(proto, expected):
     proto_lines = proto.strip().split('\n')
     expected_lines = expected.strip().split('\n')
-    assert len(proto_lines) == len(expected_lines), \
-        '{} != {}'.format(proto, expected)
+    assert len(proto_lines) == len(expected_lines), f'{proto} != {expected}'
     for left, right in zip(proto_lines, expected_lines):
-        assert left.strip() == right.strip(), \
-            '{} != {}'.format(proto, expected)
+        assert left.strip() == right.strip(), f'{proto} != {expected}'
 
 
 class TestCaffe2Script(hu.HypothesisTestCase):
@@ -123,8 +121,11 @@ class TestCaffe2Script(hu.HypothesisTestCase):
         except RuntimeError as r:
             if msg not in str(r):
                 raise RuntimeError(
-                    "Failed wrong: expected string '{}' ".format(msg) +
-                    "in error message but found\n{}".format(str(r)))
+                    (
+                        f"Failed wrong: expected string '{msg}' "
+                        + f"in error message but found\n{str(r)}"
+                    )
+                )
 
     def test_fails(self):
         def fail_inputs():
@@ -277,10 +278,7 @@ class TestCaffe2Script(hu.HypothesisTestCase):
         CU.define(self.test_program)
         CU.create_net('testIf').run()
 
-        if c0 < c1:
-            ref_r = t + 3
-        else:
-            ref_r = f + 3
+        ref_r = t + 3 if c0 < c1 else f + 3
         actual_r = workspace.FetchBlob('r')
 
         np.testing.assert_allclose(actual_r, ref_r)
@@ -297,11 +295,8 @@ class TestCaffe2Script(hu.HypothesisTestCase):
         CU.define(self.test_program)
         CU.create_net('testWhile').run()
 
-        m = 0
-        while m < 4:
+        for _ in range(4):
             r = r + r
-            m = m + 1
-
         actual_r = workspace.FetchBlob('r')
 
         np.testing.assert_allclose(actual_r, r)

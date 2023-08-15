@@ -116,9 +116,10 @@ class DataParallelModelTest(TestCase):
                 workspace.CreateNet(model.net)
 
             workspace.FeedBlob(
-                model._device_prefix + "_0/sync_num",
+                f"{model._device_prefix}_0/sync_num",
                 np.array([i * 2]).astype(np.float32),
-                device_option=core.DeviceOption(model._device_type, 0))
+                device_option=core.DeviceOption(model._device_type, 0),
+            )
             workspace.RunNet(model.net.Proto().name)
 
             # Test AddBlobSync
@@ -157,7 +158,7 @@ class DataParallelModelTest(TestCase):
             procs.append(proc)
 
         # Test complete, join background processes
-        while len(procs) > 0:
+        while procs:
             proc = procs.pop(0)
             while proc.is_alive():
                 proc.join(1)
@@ -238,7 +239,7 @@ class DataParallelModelTest(TestCase):
         checkpoint_params = data_parallel_model.GetCheckpointParams(model)
         for p in model.GetParams("cpu_1/"):
             self.assertTrue(p in checkpoint_params)
-            self.assertTrue(p + "_momentum" in checkpoint_params)
+            self.assertTrue(f"{p}_momentum" in checkpoint_params)
         for p in model.GetParams("cpu_2/"):
             self.assertFalse(p in checkpoint_params)
         self.assertTrue(
@@ -922,9 +923,7 @@ class SparseDataParallelModelTest(TestCase):
                     model.WeightedSum([param, ONE, param_grad, LR], param)
                 else:
                     param_momentum = model.param_init_net.ConstantFill(
-                        [param],
-                        param + '_momentum',
-                        value=0.0,
+                        [param], f'{param}_momentum', value=0.0
                     )
                     model.net.SparseMomentumSGDUpdate(
                         [
@@ -1125,8 +1124,8 @@ class ParallelizeBMUFTest(TestCase):
                 data = full_data[st:en, :].astype(np.float32)
                 labels = full_labels[st:en].astype(np.float32)
                 with core.DeviceScope(core.DeviceOption(device_type, g)):
-                    workspace.FeedBlob("{}_{}/data".format(device_prefix, g), data)
-                    workspace.FeedBlob("{}_{}/label".format(device_prefix, g), labels)
+                    workspace.FeedBlob(f"{device_prefix}_{g}/data", data)
+                    workspace.FeedBlob(f"{device_prefix}_{g}/label", labels)
 
     @given(
         cpu_device=st.booleans()

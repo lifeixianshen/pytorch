@@ -45,10 +45,7 @@ class TestTTPad(hu.HypothesisTestCase):
 
         def tt_pad_ref(A_):
             M_ = A_.shape[0]
-            if M_ % K == 0:
-                new_dim0 = M_
-            else:
-                new_dim0 = (M_ // K + 1) * K
+            new_dim0 = M_ if M_ % K == 0 else (M_ // K + 1) * K
             return (np.vstack((A_, np.zeros((new_dim0 - M_, A_.shape[1])))),
                     np.array([A.shape[0]]))
 
